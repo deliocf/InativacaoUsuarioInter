@@ -36,16 +36,16 @@ jobs:
 
       # Gate 2: unitários, contrato e integração (inclui injeção de falhas).
       - name: Testes unitários
-        run: dotnet test tests/InativacaoUsuarioInter.Tests.Unit/InativacaoUsuarioInter.Tests.Unit.csproj --no-build -c Release --logger trx --results-directory TestResults/Unit
+        run: dotnet test --project tests/InativacaoUsuarioInter.Tests.Unit/InativacaoUsuarioInter.Tests.Unit.csproj --no-build -c Release --results-directory TestResults/Unit
 
       - name: Testes de contrato
-        run: dotnet test tests/InativacaoUsuarioInter.Tests.Contract/InativacaoUsuarioInter.Tests.Contract.csproj --no-build -c Release --logger trx --results-directory TestResults/Contract
+        run: dotnet test --project tests/InativacaoUsuarioInter.Tests.Contract/InativacaoUsuarioInter.Tests.Contract.csproj --no-build -c Release --results-directory TestResults/Contract
 
       # Gates 2–4 e 7: integração, injeção de falhas (inclui crash de processo real com FailFast),
       # idempotência (execução dupla), cobertura de telemetria e carga com bloqueio por regressão > 20%
       # contra tests/InativacaoUsuarioInter.Tests.Integration/Performance/linha-base.json (versionada).
       - name: Testes de integração, falhas, telemetria e carga
-        run: dotnet test tests/InativacaoUsuarioInter.Tests.Integration/InativacaoUsuarioInter.Tests.Integration.csproj --no-build -c Release --logger trx --results-directory TestResults/Integration
+        run: dotnet test --project tests/InativacaoUsuarioInter.Tests.Integration/InativacaoUsuarioInter.Tests.Integration.csproj --no-build -c Release --results-directory TestResults/Integration
 
       - name: Publicar resultados
         if: always()
