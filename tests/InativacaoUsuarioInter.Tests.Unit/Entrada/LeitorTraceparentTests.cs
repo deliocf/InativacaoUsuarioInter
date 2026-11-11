@@ -75,7 +75,12 @@ public sealed class LeitorTraceparentTests : IDisposable
         var contexto = await _leitor.LerAsync(caminho, TestContext.Current.CancellationToken);
 
         Assert.Null(contexto);
-        Assert.Contains(_logs.Entradas, e => e.Nivel == LogLevel.Warning && e.Mensagem.Contains("Bloqueio", StringComparison.Ordinal));
+        var aviso = Assert.Single(_logs.Entradas, e => e.Nivel == LogLevel.Warning && e.Mensagem.Contains("Falha ao ler a.txt.traceparent", StringComparison.Ordinal));
+        if (OperatingSystem.IsWindows())
+        {
+            // No Windows o compartilhamento negado tem código Win32 32 → Bloqueio; em Unix o código difere.
+            Assert.Contains("(Bloqueio)", aviso.Mensagem, StringComparison.Ordinal);
+        }
     }
 
     public void Dispose() => Directory.Delete(_pasta, recursive: true);
