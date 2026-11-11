@@ -1,6 +1,14 @@
 <Solution>
-  <Project Path="InativacaoUsuarioInter.Setup/InativacaoUsuarioInter.Setup.vdproj" Type="Installer">
-    <Build />
-  </Project>
-  <Project Path="InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj" />
+  <Folder Name="/src/">
+    <Project Path="InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj" />
+    <Project Path="InativacaoUsuarioInter.Setup/InativacaoUsuarioInter.Setup.vdproj" Type="Installer">
+      <Build />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../tests/InativacaoUsuarioInter.Tests.Comum/InativacaoUsuarioInter.Tests.Comum.csproj" />
+    <Project Path="../tests/InativacaoUsuarioInter.Tests.Unit/InativacaoUsuarioInter.Tests.Unit.csproj" />
+    <Project Path="../tests/InativacaoUsuarioInter.Tests.Contract/InativacaoUsuarioInter.Tests.Contract.csproj" />
+    <Project Path="../tests/InativacaoUsuarioInter.Tests.Integration/InativacaoUsuarioInter.Tests.Integration.csproj" />
+  </Folder>
 </Solution>

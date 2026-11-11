@@ -1,0 +1,19 @@
+# Build e IDE (.NET)
+bin/
+obj/
+.vs/
+*.user
+*.suo
+packages/
+TestResults/
+publish/
+
+# Configuração local com credenciais de teste (research R-15).
+# Versionar somente appsettings.example.json.
+src/InativacaoUsuarioInter.Service/appsettings.json
+
+# Universal
+.DS_Store
+Thumbs.db
+*.swp
+.idea/

@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    # Testcontainers precisa de Docker com containers Linux (SQL Server 2022).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: |
+          dotnet restore src/InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj
+          for p in Comum Unit Contract Integration; do
+            dotnet restore tests/InativacaoUsuarioInter.Tests.$p/InativacaoUsuarioInter.Tests.$p.csproj
+          done
+
+      # Gate 1: warnings tratados como erro (TreatWarningsAsErrors nos csproj).
+      # O serviço é compilado explicitamente: o teste de crash com processo real (T061) executa
+      # src/InativacaoUsuarioInter.Service/bin/Release/net10.0/InativacaoUsuarioInter.Service.dll.
+      - name: Build
+        run: |
+          dotnet build src/InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj --no-restore -c Release
+          for p in Unit Contract Integration; do
+            dotnet build tests/InativacaoUsuarioInter.Tests.$p/InativacaoUsuarioInter.Tests.$p.csproj --no-restore -c Release
+          done
+
+      # Gate 2: unitários, contrato e integração (inclui injeção de falhas).
+      - name: Testes unitários
+        run: dotnet test tests/InativacaoUsuarioInter.Tests.Unit/InativacaoUsuarioInter.Tests.Unit.csproj --no-build -c Release --logger trx --results-directory TestResults/Unit
+
+      - name: Testes de contrato
+        run: dotnet test tests/InativacaoUsuarioInter.Tests.Contract/InativacaoUsuarioInter.Tests.Contract.csproj --no-build -c Release --logger trx --results-directory TestResults/Contract
+
+      # Gates 2–4 e 7: integração, injeção de falhas (inclui crash de processo real com FailFast),
+      # idempotência (execução dupla), cobertura de telemetria e carga com bloqueio por regressão > 20%
+      # contra tests/InativacaoUsuarioInter.Tests.Integration/Performance/linha-base.json (versionada).
+      - name: Testes de integração, falhas, telemetria e carga
+        run: dotnet test tests/InativacaoUsuarioInter.Tests.Integration/InativacaoUsuarioInter.Tests.Integration.csproj --no-build -c Release --logger trx --results-directory TestResults/Integration
+
+      - name: Publicar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-testes
+          path: |
+            TestResults/
+            tests/InativacaoUsuarioInter.Tests.Integration/Performance/linha-base.json
