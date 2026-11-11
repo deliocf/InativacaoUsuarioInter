@@ -1,0 +1,39 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csx}]
+indent_size = 4
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_prefer_braces = when_multiline:suggestion
+dotnet_sort_system_directives_first = true
+
+# Worker Service: não há SynchronizationContext.
+dotnet_diagnostic.CA2007.severity = none
+# Mensagens e nomes em português.
+dotnet_diagnostic.CA1303.severity = none
+# Nomes de domínio em português com sufixos que o analisador interpreta mal.
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1716.severity = none
+# Testes xUnit usam sublinhados nos nomes de métodos.
+dotnet_diagnostic.CA1707.severity = none
+# Formatação de datas/números é sempre explícita com InvariantCulture onde importa.
+dotnet_diagnostic.CA1305.severity = suggestion
+
+[*.{json,yml,yaml,csproj,slnx,props,targets}]
+indent_size = 2
+
+[tests/**.cs]
+# Testes repassam TestContext.Current.CancellationToken onde relevante; não exigir em todo lugar.
+dotnet_diagnostic.xUnit1051.severity = suggestion
+dotnet_diagnostic.CA2000.severity = suggestion
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA1849.severity = suggestion
+dotnet_diagnostic.CA1861.severity = none
