@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="InativacaoUsuarioInter.Setup/InativacaoUsuarioInter.Setup.vdproj" Type="Installer">
+    <Build />
+  </Project>
+  <Project Path="InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj" />
+</Solution>
