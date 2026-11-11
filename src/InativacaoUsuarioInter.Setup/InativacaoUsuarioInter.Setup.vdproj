@@ -15,19 +15,13 @@
     {
         "Entry"
         {
-        "MsmKey" = "8:_028C229FA0FE461FA8ACEF635CE04CB8"
+        "MsmKey" = "8:_7135A9A3C3454121B8CE04F58F84C483"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
         {
-        "MsmKey" = "8:_3278063808384479A16FD77231D180AF"
-        "OwnerKey" = "8:_UNDEFINED"
-        "MsmSig" = "8:_UNDEFINED"
-        }
-        "Entry"
-        {
-        "MsmKey" = "8:_CAF357EA1BE04D218C7944E83031FF6B"
+        "MsmKey" = "8:_CF5F6F7B6F454717A1BE27F699330D80"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
         }
@@ -49,6 +43,14 @@
         "PrivateKeyFile" = "8:"
         "TimeStampServer" = "8:"
         "InstallerBootstrapper" = "3:2"
+            "BootstrapperCfg:{63ACBE69-63AA-4F98-B2B6-99F9E24495F2}"
+            {
+            "Enabled" = "11:TRUE"
+            "PromptEnabled" = "11:TRUE"
+            "PrerequisitesLocation" = "2:1"
+            "Url" = "8:"
+            "ComponentsUrl" = "8:"
+            }
         }
         "Release"
         {
@@ -65,6 +67,14 @@
         "PrivateKeyFile" = "8:"
         "TimeStampServer" = "8:"
         "InstallerBootstrapper" = "3:2"
+            "BootstrapperCfg:{63ACBE69-63AA-4F98-B2B6-99F9E24495F2}"
+            {
+            "Enabled" = "11:TRUE"
+            "PromptEnabled" = "11:TRUE"
+            "PrerequisitesLocation" = "2:1"
+            "Url" = "8:"
+            "ComponentsUrl" = "8:"
+            }
         }
     }
     "Deployable"
@@ -662,37 +672,9 @@
         }
         "ProjectOutput"
         {
-            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_028C229FA0FE461FA8ACEF635CE04CB8"
+            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_7135A9A3C3454121B8CE04F58F84C483"
             {
-            "SourcePath" = "8:InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\apphost.exe"
-            "TargetName" = "8:"
-            "Tag" = "8:"
-            "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:FALSE"
-            "IsolateTo" = "8:"
-            "ProjectOutputGroupRegister" = "3:1"
-            "OutputConfiguration" = "8:"
-            "OutputGroupCanonicalName" = "8:PublishItems"
-            "OutputProjectGuid" = "8:{1DD12955-A4C0-4350-A6DE-4A800A4FA845}"
-            "ShowKeyOutput" = "11:TRUE"
-                "ExcludeFilters"
-                {
-                }
-            }
-            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_3278063808384479A16FD77231D180AF"
-            {
-            "SourcePath" = "8:InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\InativacaoUsuarioInter.Service.dll"
+            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\InativacaoUsuarioInter.Service.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
@@ -712,15 +694,15 @@
             "ProjectOutputGroupRegister" = "3:1"
             "OutputConfiguration" = "8:"
             "OutputGroupCanonicalName" = "8:Built"
-            "OutputProjectGuid" = "8:{1DD12955-A4C0-4350-A6DE-4A800A4FA845}"
+            "OutputProjectGuid" = "8:{DA4280A9-5B22-2E61-6573-23E311B64C85}"
             "ShowKeyOutput" = "11:TRUE"
                 "ExcludeFilters"
                 {
                 }
             }
-            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_499934E668E8488AA2FFD5D683E89D30"
+            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_CF5F6F7B6F454717A1BE27F699330D80"
             {
-            "SourcePath" = "8:"
+            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\apphost.exe"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
@@ -739,36 +721,8 @@
             "IsolateTo" = "8:"
             "ProjectOutputGroupRegister" = "3:1"
             "OutputConfiguration" = "8:"
-            "OutputGroupCanonicalName" = "8:ContentFilesProjectOutputGroup"
-            "OutputProjectGuid" = "8:{1DD12955-A4C0-4350-A6DE-4A800A4FA845}"
-            "ShowKeyOutput" = "11:TRUE"
-                "ExcludeFilters"
-                {
-                }
-            }
-            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_CAF357EA1BE04D218C7944E83031FF6B"
-            {
-            "SourcePath" = "8:InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\apphost.exe"
-            "TargetName" = "8:"
-            "Tag" = "8:"
-            "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:FALSE"
-            "IsolateTo" = "8:"
-            "ProjectOutputGroupRegister" = "3:1"
-            "OutputConfiguration" = "8:"
-            "OutputGroupCanonicalName" = "8:PublishItemsOutputGroup"
-            "OutputProjectGuid" = "8:{1DD12955-A4C0-4350-A6DE-4A800A4FA845}"
+            "OutputGroupCanonicalName" = "8:PublishItems"
+            "OutputProjectGuid" = "8:{DA4280A9-5B22-2E61-6573-23E311B64C85}"
             "ShowKeyOutput" = "11:TRUE"
                 "ExcludeFilters"
                 {

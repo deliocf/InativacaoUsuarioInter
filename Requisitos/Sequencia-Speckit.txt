@@ -1,0 +1,19 @@
+/speckit-constitution
+/speckit-agent-context-update
+
+----------------------------
+/speckit-specify
+/speckit-clarify
+/speckit-plan
+/speckit-checklist
+/speckit-tasks
+/speckit-analyze
+/speckit-implement
+/speckit-converge
+
+----------------------------
+/speckit-bug-assess
+
+----------------------------
+Sim, quero. Em seguida aplique as edições para mim.
+

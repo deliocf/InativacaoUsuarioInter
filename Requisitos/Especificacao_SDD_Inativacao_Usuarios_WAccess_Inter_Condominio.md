@@ -20,7 +20,7 @@ Implementar **um único serviço configurável**, executável em duas instalaç�
 
 ### 3.1 Incluído
 
-1. Monitoramento periódico de diretórios de entrada.
+1. Monitoramento periódico de diretórios de entrada, com intervalo definido por `Settings:IntervalSeconds` (de 10 a 21600 segundos).
 2. Leitura de arquivos JSON e TXT, validação de formato e processamento registro a registro.
 3. Inativação de usuário por CPF no banco WAccess do ambiente corrente.
 4. Auditoria de inativações e registro de falhas definitivas.
@@ -44,10 +44,26 @@ Implementar **um único serviço configurável**, executável em duas instalaç�
 | Chave no `appsettings.json` | Instância | Uso |
 |---|---|---|
 | `Settings:Instancia` | Ambas | `Inter` ou `Condominio` |
+| `Settings:IntervalSeconds` | Ambas | Frequência de varredura das pastas, em segundos; mínimo de `10` e máximo de `21600` (6 horas) |
 | `SharePointFolder:FolderPathInter` | Inter | Diretório raiz do Inter |
 | `SharePointFolder:FolderPathCondominio` | Ambas | Diretório raiz do condomínio; destino de replicação no Inter |
 | `ConnectionString:WAccessInter` | Inter | String de conexão com o WAccess do Inter |
 | `ConnectionString` (chave específica a definir) | Condominio | Conexão com o WAccess do condomínio; ver pontos em aberto |
+
+### 4.1 Banco de dados de testes e credenciais locais
+
+- **Todas as conexões WAccess informadas na seção `ConnectionString` do `appsettings.json` deste projeto apontam exclusivamente para bancos de dados locais de testes.** Não interpretar essas conexões como acesso a produção.
+- **Durante os testes, é permitido atualizar registros existentes**, incluindo executar a inativação (`CHMain.CHState = 1`) e conferir seus efeitos diretamente no banco configurado, sem exigir banco simulado ou modo *read-only*.
+- **Não ocultar, mascarar, ofuscar, criptografar ou mover automaticamente a senha** presente na string de conexão de testes; manter seu valor explícito no `appsettings.json` local para permitir o funcionamento e a inspeção da configuração.
+- Esta autorização aplica-se **somente ao ambiente local de testes identificado nas configurações**. Não estendê-la a bancos de produção ou a outros ambientes. Não incluir senhas em logs, mensagens de erro, evidências de teste ou documentação publicada. Evitar publicar o arquivo de configuração contendo credenciais reais.
+
+### 4.2 Intervalo de monitoramento
+
+- As instâncias `Inter` e `Condominio` devem consultar periodicamente suas respectivas pastas `Imput` procurando arquivos elegíveis `.json` ou `.txt`.
+- Aguardar **`N = Settings:IntervalSeconds` segundos** entre varreduras; a unidade é segundos.
+- **Intervalo mínimo: 10 segundos. Intervalo máximo: 21600 segundos (6 horas).** Validar o valor na inicialização; valores ausentes, não numéricos ou fora desse intervalo devem produzir erro claro de configuração, sem iniciar a rotina de monitoramento com um valor arbitrário.
+- Realizar a primeira varredura na inicialização e aguardar o intervalo configurado **após o término de cada ciclo** para iniciar o seguinte, impedindo varreduras concorrentes. Manter o tratamento dos arquivos pendentes e a etapa de replicação de acordo com os fluxos desta especificação.
+- Uma alteração em `appsettings.json` deve ser aplicada na próxima inicialização do serviço; atualização dinâmica do intervalo em tempo de execução não é requisito.
 
 > **Atenção:** o texto original identifica explicitamente `ConnectionString:WAccessInter` para a instância Inter, mas, para a instância Condominio, menciona somente a conexão “referenciada na ConnectionString”, sem indicar o nome da chave. Não assumir silenciosamente `WAccessCondominio` como uma configuração já existente.
 
@@ -56,7 +72,8 @@ Modelo **ilustrativo**, condicionado à definição da chave do condomínio:
 ```json
 {
   "Settings": {
-    "Instancia": "Inter"
+    "Instancia": "Inter",
+    "IntervalSeconds": 60
   },
   "SharePointFolder": {
     "FolderPathInter": "<CAMINHO_RAIZ_INTER>",
@@ -68,7 +85,7 @@ Modelo **ilustrativo**, condicionado à definição da chave do condomínio:
 }
 ```
 
-A periodicidade do monitoramento não foi definida. Recomenda-se torná-la configurável, com intervalo documentado e sem sobreposição de ciclos; **a chave e o valor padrão devem ser aprovados** antes de serem considerados contrato de configuração.
+O exemplo utiliza `60` segundos apenas como configuração demonstrativa. O valor efetivo é sempre o informado em `Settings:IntervalSeconds`, respeitando os limites de 10 a 21600 segundos.
 
 ## 5. Estrutura de diretórios
 
@@ -227,7 +244,7 @@ Estas medidas são **recomendações de engenharia para atender à robustez exig
 - Implementar retentativas com atraso configurável e sem espera ocupada; tentativa ilimitada **apenas para falhas reconhecidamente transitórias**, conforme exigência original.
 - Manter o serviço operacional caso um único arquivo/registro apresente erro; produzir logs técnicos suficientes para diagnóstico.
 - Validar configurações obrigatórias por instância no início da execução; falhar de forma explícita quando uma configuração indispensável estiver ausente.
-- Restringir permissões de leitura e escrita nos caminhos de entrada, saída e auditoria; proteger segredos de banco e evitar divulgar strings de conexão nos logs.
+- Restringir permissões de leitura e escrita nos caminhos de entrada, saída e auditoria. No ambiente local de testes, manter a senha legível no `appsettings.json` conforme seção 4.1, sem ocultação ou proteção automática; **não registrar strings de conexão ou senhas nos logs** e não propagar essa exceção para produção.
 - Não introduzir mudanças incompatíveis nos demais serviços da solução. Reutilizar infraestrutura e bibliotecas existentes, após inspeção do projeto.
 
 ## 12. Critérios de aceite e cenários de teste
@@ -249,6 +266,11 @@ Estas medidas são **recomendações de engenharia para atender à robustez exig
 | CA-13 | Arquivo malformado / extensão não suportada | Não executar SQL com dados incorretos; resultado conforme política de rejeição aprovada |
 | CA-14 | Transferência/cópia ainda em andamento | O receptor não lê arquivo parcial |
 | CA-15 | SQL e registro com caracteres imprevistos | Consulta parametrizada; logs preservam integridade e não executam entradas como comando |
+| CA-16 | `Settings:IntervalSeconds=10` | Intervalo mínimo aceito e varredura recorrente sem concorrência |
+| CA-17 | `Settings:IntervalSeconds=21600` | Intervalo máximo de 6 horas aceito |
+| CA-18 | `Settings:IntervalSeconds=9`, `21601`, ausente ou inválido | Erro explícito de configuração; rotina não inicia com frequência inválida |
+| CA-19 | `Settings:IntervalSeconds=60` em qualquer instância | A primeira varredura ocorre na inicialização; próximas varreduras começam 60 segundos após o término do ciclo anterior |
+| CA-20 | Instância configurada com banco de testes local | Testes de integração podem alterar efetivamente `CHMain.CHState`; senha permanece legível no `appsettings.json` local, sem exposição em logs |
 
 Incluir testes unitários para parse/validação/classificação, testes de integração com banco controlado para o `UPDATE` e testes ponta a ponta com as duas instâncias e diretórios isolados. Reproduzir CPFs e nomes demonstrativos dos exemplos, sem depender de dados reais.
 
@@ -256,7 +278,7 @@ Incluir testes unitários para parse/validação/classificação, testes de inte
 
 1. **Chave de conexão do condomínio:** qual o nome exato em `appsettings.json`? O texto somente nomeia `ConnectionString:WAccessInter` no Inter.
 2. **Endereço/forma de transferência:** `FolderPathCondominio` aponta para compartilhamento já montado no servidor Inter, ou será necessário acesso FTP/SFTP? Em caso de FTP/SFTP, faltam endpoint, autenticação, porta, diretório remoto e requisitos de segurança.
-3. **Periodicidade:** intervalo de varredura e política de backoff/retry configuráveis; chaves e padrões.
+3. **Política adicional de retentativas:** a frequência de varredura já está definida em `Settings:IntervalSeconds` (10–21600 segundos); confirmar apenas se tentativas de falhas transitórias exigem atraso/backoff próprio, além do próximo ciclo de varredura.
 4. **Falha definitiva em arquivo misto:** o registro inexistente deve ficar apenas no log ou também ser isolado em arquivo específico? A regra “mover somente se todos forem desativados” precisa ser conciliada com “não retentar falhas definitivas”.
 5. **Arquivo com sucessos + pendências:** convenção de nomes e identificação das partes; como evitar colisão com arquivos já existentes em `Output`, `Processados` e `Imput`.
 6. **Usuário já inativo:** considerar processamento bem-sucedido/idempotente e como registrar a auditoria sem afirmar que houve mudança de estado não realizada?
@@ -271,4 +293,4 @@ Incluir testes unitários para parse/validação/classificação, testes de inte
 
 ## 14. Instrução final para implementação SDD
 
-Implementar no projeto **`src/InativacaoUsuarioInter.Service`** os requisitos desta especificação, com uma única base de código e seleção do fluxo via `Settings:Instancia`. Primeiro inspecionar a estrutura do projeto e as configurações existentes. Não alterar regras de negócio, nomes de diretórios ou strings de conexão sem evidência ou aprovação. Priorizar integridade dos registros, idempotência, auditoria, isolamento de falhas e replicação segura. Adicionar testes automatizados correspondentes aos critérios de aceite e documentar as escolhas técnicas. Quando um ponto em aberto impedir uma decisão correta, destacá-lo explicitamente e não inventar uma regra de negócio silenciosa.
+Implementar no projeto **`src/InativacaoUsuarioInter.Service`** os requisitos desta especificação, com uma única base de código e seleção do fluxo via `Settings:Instancia`. Primeiro inspecionar a estrutura do projeto e as configurações existentes. Não alterar regras de negócio, nomes de diretórios ou strings de conexão sem evidência ou aprovação. Priorizar integridade dos registros, idempotência, auditoria, isolamento de falhas e replicação segura. Respeitar `Settings:IntervalSeconds` (10–21600 segundos), validar limites e testar a atualização real no banco exclusivamente local de testes. Preservar a senha explícita na configuração local, sem registrá-la em logs. Adicionar testes automatizados correspondentes aos critérios de aceite e documentar as escolhas técnicas. Quando um ponto em aberto impedir uma decisão correta, destacá-lo explicitamente e não inventar uma regra de negócio silenciosa.
