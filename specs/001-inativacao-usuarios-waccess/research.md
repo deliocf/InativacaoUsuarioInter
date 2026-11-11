@@ -31,9 +31,9 @@ Cada item segue o formato **Decisão / Justificativa / Alternativas consideradas
 
 A Clarification de 2026-11-11 registrou que "`CHMain.IdNumber` é chave primária e não se repete". O esquema mostra que **não há restrição de unicidade**, e o banco de testes contém **1 CPF em 2 cadastros**.
 
-**Status**: a spec foi corrigida em 2026-11-11 (Clarifications, FR-014, Key Entities, Edge Cases e Assumptions) para refletir o esquema real. A regra abaixo continua **pendente de confirmação do negócio**.
+**Status**: a spec foi corrigida em 2026-11-11 (Clarifications, FR-014, Key Entities, Edge Cases e Assumptions) para refletir o esquema real. A regra abaixo foi **confirmada pelo negócio em 2026-11-11**.
 
-**Decisão (padrão adotado até confirmação)**: aplicar a regra literal do requisito original (`UPDATE … WHERE IdNumber = @CPF`), que inativa **todas** as linhas com aquele CPF. A auditoria continua com uma única linha por CPF, e o layout do contrato não muda. A quantidade de linhas afetadas vai para a telemetria técnica (`waccess.linhas_afetadas`), e quando for maior que 1 o serviço registra um aviso estruturado `CpfComMultiplosCadastros`.
+**Decisão (confirmada pelo negócio em 2026-11-11)**: aplicar a regra literal do requisito original (`UPDATE … WHERE IdNumber = @CPF`), que inativa **todas** as linhas com aquele CPF. A auditoria continua com uma única linha por CPF, e o layout do contrato não muda. A quantidade de linhas afetadas vai para a telemetria técnica (`waccess.linhas_afetadas`), e quando for maior que 1 o serviço registra um aviso estruturado `CpfComMultiplosCadastros`.
 
 **Justificativa**: (a) é o comportamento literal do requisito; (b) o objetivo de negócio é revogar o acesso daquela pessoa; (c) não exige nova causa no log de Falhas nem mudança no contrato fixo. A divergência fica destacada para o responsável decidir se prefere bloquear o caso. Basta trocar a regra no `RepositorioWAccess` (ponto único).
 

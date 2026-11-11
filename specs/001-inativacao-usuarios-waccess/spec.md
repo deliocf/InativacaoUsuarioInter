@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-11
 
-**Status**: Implementada — aguardando (1) confirmação do SC-009 (gate de regressão de performance) em ambiente sem carga externa e (2) decisão de negócio sobre CPF com múltiplos cadastros (research R-02)
+**Status**: Finalizada (2026-11-11) — implementação no PR #1; SC-009 confirmado no CI; regra R-02 confirmada pelo negócio
 
 **Input**: User description: "use Requisitos\Especificacao_SDD_Inativacao_Usuarios_WAccess_Inter_Condominio.md como base"
 
@@ -21,7 +21,7 @@ O Banco Inter precisa inativar, no sistema de controle de acesso WAccess, usuár
 - Q: Qual o nome da chave de conexão WAccess de cada instância? → A: `ConnectionString:WAccess` em **ambas** as instâncias; cada instalação informa nela o seu próprio banco. Substitui a chave `ConnectionString:WAccessInter` citada no requisito original.
 - Q: Como tratar registros com falha definitiva em arquivo misto? → A: Registrar no log de `Falhas` **e** gravar em `Falhas` um arquivo, no formato original, contendo somente os registros com falha definitiva. O arquivo conta como concluído quando não restam pendências transitórias, e o destino de concluídos (`Output`/`Processados`) recebe somente os registros com sucesso.
 - Q: CPF com pontuação (ex.: `222.222.222-22`) deve ser normalizado ou rejeitado? → A: Normalizar — remover `.`, `-` e espaços internos e então exigir exatamente 11 dígitos; qualquer outro caractere → `DADO_INVALIDO`.
-- Q: O mesmo CPF pode estar em mais de um cadastro no WAccess? → A (resposta original): "CPF é chave primária, não repete". **Revisado em 2026-11-11 com evidência do esquema** (research R-01/R-02): a chave primária de `CHMain` é `CHID`; `IdNumber` é `varchar(50)` sem restrição de unicidade, e o banco de testes tem 1 CPF em 2 cadastros. Regra adotada: aplicar o requisito literal (`WHERE IdNumber = @CPF`) e inativar **todos** os cadastros com aquele CPF, com uma única linha de auditoria. *Pendente de confirmação do negócio; trocar por "rejeitar" afeta só o repositório WAccess.*
+- Q: O mesmo CPF pode estar em mais de um cadastro no WAccess? → A (resposta original): "CPF é chave primária, não repete". **Revisado em 2026-11-11 com evidência do esquema** (research R-01/R-02): a chave primária de `CHMain` é `CHID`; `IdNumber` é `varchar(50)` sem restrição de unicidade, e o banco de testes tem 1 CPF em 2 cadastros. Regra adotada: aplicar o requisito literal (`WHERE IdNumber = @CPF`) e inativar **todos** os cadastros com aquele CPF, com uma única linha de auditoria. **Confirmado pelo negócio em 2026-11-11.**
 - Q: Qual o volume esperado e o teto de registros por arquivo? → A: Média de 3 registros por arquivo; teto de 1.000 registros (1 MB) — acima disso o arquivo é rejeitado com `ARQUIVO_EXCEDE_LIMITE`.
 - Q: O formato de linha sugerido para os logs de Auditoria e Falhas vira contrato fixo? → A: Sim — uma linha por entrada, campos `chave=valor` separados por ` | `; Auditoria termina em `status=`, Falhas em `causa=`.
 - Q: Por quanto tempo um registro pode ficar pendente antes de alertar a operação? → A: 24 horas (configurável); acima disso o serviço sinaliza alerta no estado de saúde e no log técnico, sem interromper as retentativas.
@@ -259,7 +259,7 @@ A instância `Condominio` monitora sua pasta `Imput`, aplica as mesmas regras de
 - **Somente o banco WAccess existente**: nenhuma API WAccess nova; a inativação é feita diretamente na tabela `CHMain`. O esquema e a regra de inativação do WAccess não são alterados.
 - **Fora do escopo**: criação/manutenção ou reativação de usuários, alteração do cadastro de responsáveis, interface de upload de arquivos e expurgo automático.
 - **Usuário já inativo** (ponto em aberto 6): resolvido pelo Princípio III da constituição — sucesso idempotente, com auditoria de status `JA_INATIVO` registrada uma única vez, sem afirmar mudança de estado.
-- **Unicidade do CPF** (ponto 7): `CHMain.IdNumber` **não** é único no esquema real (ver Clarifications, revisão de 2026-11-11). Cada CPF normalmente corresponde a um cadastro; havendo mais de um, todos são inativados (regra literal), até confirmação do negócio.
+- **Unicidade do CPF** (ponto 7): `CHMain.IdNumber` **não** é único no esquema real (ver Clarifications, revisão de 2026-11-11). Cada CPF normalmente corresponde a um cadastro; havendo mais de um, todos são inativados (regra literal, confirmada pelo negócio em 2026-11-11).
 - **Contrato de entrada** (ponto 8): UTF-8 com ou sem BOM; espaços nas extremidades descartados; linhas vazias ignoradas; sem cabeçalho; CPF de 11 dígitos sem validação de dígito verificador, com pontuação normalizada (ver Clarifications); CPF numérico em JSON → `DADO_INVALIDO`; CPF repetido processado uma vez.
 - **Nome do arquivo** (ponto 9): `yyyyMMddHHmmss` (24 h) é a convenção recomendada, mas não é validada; nomes fora do padrão são aceitos.
 - **Fuso horário** (ponto 11): horário local da instalação com offset UTC explícito (ISO 8601), como no exemplo do documento-base.

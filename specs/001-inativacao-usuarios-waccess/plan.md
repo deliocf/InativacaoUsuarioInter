@@ -126,7 +126,7 @@ tests/
 
 | Item | Impacto | Tratamento |
 | --- | --- | --- |
-| R-02: CPF duplicado em `CHMain` (spec corrigida em 2026-11-11 para refletir o esquema real) | Inativação de mais de um cadastro | Padrão: regra literal (inativa todos) + aviso; **confirmar com o negócio** |
+| R-02: CPF duplicado em `CHMain` (spec corrigida em 2026-11-11 para refletir o esquema real) | Inativação de mais de um cadastro | Regra literal (inativa todos) + aviso — **confirmada pelo negócio em 2026-11-11** |
 | Pré-leitura + UPDATE em duas idas ao banco (R-03) | Corrida de milissegundos com outro sistema que inative o mesmo usuário | Aceita: o estado final fica correto; pior caso é auditar `INATIVADO` em vez de `JA_INATIVO` |
 | 1 `IdNumber` pontuado no banco de testes | Esse usuário não é encontrado | Regra literal mantida; aparece como `CPF_NAO_ENCONTRADO` |
 | Codificação dos TXT gerados no Windows (ANSI/1252) | Arquivo rejeitado como `ARQUIVO_INVALIDO` | Contrato UTF-8 (spec, Assumptions); confirmar com o sistema gerador |

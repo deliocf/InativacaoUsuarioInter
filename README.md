@@ -106,7 +106,7 @@ O arquivo `<DiretorioEstado>/saude.json` é regravado na partida e no início e 
 
 ## 8. Pontos de atenção conhecidos
 
-- **CPF com mais de um cadastro no WAccess** (research R-02): todos os cadastros daquele CPF são inativados, e o log técnico registra o aviso `CpfComMultiplosCadastros`. **A regra está pendente de confirmação do negócio.**
+- **CPF com mais de um cadastro no WAccess** (research R-02): todos os cadastros daquele CPF são inativados, e o log técnico registra o aviso `CpfComMultiplosCadastros`. **Regra confirmada pelo negócio em 2026-11-11.**
 - **`IdNumber` gravado com pontuação no WAccess**: a busca usa os 11 dígitos, então esse cadastro resulta em `CPF_NAO_ENCONTRADO`.
 - **Arquivos TXT em ANSI/Windows-1252** (acentos): o arquivo é rejeitado como `ARQUIVO_INVALIDO`. O sistema que gera os arquivos precisa gravar em UTF-8.
 - **Proteção de branch no GitHub**: para o CI (`.github/workflows/ci.yml`) bloquear o merge, configure em *Settings → Branches* que `main` exige o check `ci / build-test`.
