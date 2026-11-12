@@ -3,7 +3,10 @@ using InativacaoUsuarioInter.Tests.Comum;
 
 namespace InativacaoUsuarioInter.Tests.Integration.FluxoInter;
 
-/// <summary>T033 — fluxo Inter ponta a ponta com SQL Server real e pastas reais (US1).</summary>
+/// <summary>
+/// T033 + feature 002 T021 — fluxo Inter ponta a ponta com SQL Server real e pastas reais: histórico em
+/// <c>Processed</c>, entrega ao Condomínio no mesmo ciclo, fila <c>Output</c> vazia, falhas com o nome do original.
+/// </summary>
 public sealed partial class FluxoInterTests(SqlServerFixture sql)
 {
     private const string Json3 = """
@@ -30,7 +33,7 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
     [Theory]
     [InlineData("20261111103000.json", Json3)]
     [InlineData("20261111103000.txt", Txt3)]
-    public async Task CA02_CA03_tres_cpfs_existentes_sao_inativados_auditados_e_arquivo_vai_inteiro_para_Output(string nome, string conteudo)
+    public async Task CA02_CA03_tres_cpfs_existentes_sao_inativados_auditados_e_arquivo_vai_inteiro_para_Processed_e_Condominio(string nome, string conteudo)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
@@ -44,15 +47,17 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
             Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync(cpf, ct));
         }
 
-        var auditoria = cenario.Ambiente.LinhasLog("Auditoria");
+        var auditoria = cenario.Ambiente.LinhasLog("Logs");
         Assert.Equal(3, auditoria.Length);
         Assert.All(auditoria, l => Assert.Matches(LinhaAuditoria(), l));
         Assert.Contains(auditoria, l => l.Contains("| cpf=33333333333 | id_responsavel=2 | nome_responsavel=Carlos Renato da Silva | status=INATIVADO", StringComparison.Ordinal));
         Assert.All(auditoria, l => Assert.Contains($"arquivo={nome}", l, StringComparison.Ordinal));
-        Assert.Empty(cenario.Ambiente.LinhasLog("Falhas"));
-        Assert.Equal([nome], cenario.Ambiente.Arquivos("Output"));
-        Assert.Equal(conteudo, await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Output", nome), ct));
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Empty(cenario.Ambiente.LinhasLog("Fail"));
+        Assert.Equal([nome], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Equal(conteudo, await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Processed", nome), ct));
+        Assert.Equal(conteudo, await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Input", nome), ct));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
     }
 
     [Fact]
@@ -67,11 +72,11 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
 
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("01234567890", ct));
         Assert.Equal([(short)0], await cenario.Banco.ObterEstadosAsync("1234567890", ct));
-        Assert.Contains("| cpf=01234567890 |", Assert.Single(cenario.Ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
+        Assert.Contains("| cpf=01234567890 |", Assert.Single(cenario.Ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task CA05_cpf_ausente_vai_para_falhas_e_sucessos_para_parte_de_Output()
+    public async Task CA05_cpf_ausente_vai_para_Fail_com_o_nome_original_e_sucessos_para_Processed_e_Condominio()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
@@ -82,33 +87,36 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.Equal(2, cenario.Ambiente.LinhasLog("Auditoria").Length);
-        var falha = Assert.Single(cenario.Ambiente.LinhasLog("Falhas"));
+        Assert.Equal(2, cenario.Ambiente.LinhasLog("Logs").Length);
+        var falha = Assert.Single(cenario.Ambiente.LinhasLog("Fail"));
         Assert.EndsWith("| Inter | arquivo=20261111103000.json | cpf=44444444444 | causa=CPF_NAO_ENCONTRADO", falha, StringComparison.Ordinal);
 
-        var parteFalhas = Assert.Single(cenario.Ambiente.Arquivos("Falhas"), a => a.EndsWith(".json", StringComparison.Ordinal));
-        Assert.Matches(@"^20261111103000__falhas-[0-9a-f]{8}\.json$", parteFalhas);
-        var conteudoFalhas = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Falhas", parteFalhas), ct);
+        // Feature 002 (FR-010): o arquivo de falhas tem o mesmo nome do original.
+        var parteFalhas = Assert.Single(cenario.Ambiente.Arquivos("Fail"), a => a.EndsWith(".json", StringComparison.Ordinal));
+        Assert.Equal("20261111103000.json", parteFalhas);
+        var conteudoFalhas = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", parteFalhas), ct);
         Assert.Contains("44444444444", conteudoFalhas, StringComparison.Ordinal);
         Assert.DoesNotContain("22222222222", conteudoFalhas, StringComparison.Ordinal);
 
-        var parteSucesso = Assert.Single(cenario.Ambiente.Arquivos("Output"));
+        var parteSucesso = Assert.Single(cenario.Ambiente.Arquivos("Processed"));
         Assert.Matches(@"^20261111103000__sucesso-[0-9a-f]{8}\.json$", parteSucesso);
-        var conteudoSucesso = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Output", parteSucesso), ct);
+        var conteudoSucesso = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Processed", parteSucesso), ct);
+        Assert.Equal(conteudoSucesso, await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Input", parteSucesso), ct));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
         Assert.Contains("22222222222", conteudoSucesso, StringComparison.Ordinal);
         Assert.Contains("33333333333", conteudoSucesso, StringComparison.Ordinal);
         Assert.DoesNotContain("44444444444", conteudoSucesso, StringComparison.Ordinal);
 
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal(antes[outro], (await cenario.Banco.ObterSnapshotAsync(ct))[outro]);
 
         // Não é tentado novamente.
         await cenario.CicloAsync(ct);
-        Assert.Single(cenario.Ambiente.LinhasLog("Falhas"));
+        Assert.Single(cenario.Ambiente.LinhasLog("Fail"));
     }
 
     [Fact]
-    public async Task Usuario_ja_inativo_audita_JA_INATIVO_uma_unica_vez()
+    public async Task Usuario_ja_inativo_audita_JA_INATIVO_uma_unica_vez_e_recebe_a_marca_de_download()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
@@ -118,8 +126,11 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
         await cenario.CicloAsync(ct);
 
-        Assert.EndsWith("status=JA_INATIVO", Assert.Single(cenario.Ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
-        Assert.Equal(0, await cenario.Banco.ContarHistoricoAsync(ct));
+        Assert.EndsWith("status=JA_INATIVO", Assert.Single(cenario.Ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
+
+        // Feature 002 (FR-015): uma única alteração — só CHDownloadRequired — e nenhuma no segundo ciclo.
+        Assert.Equal(1, await cenario.Banco.ContarHistoricoAsync(ct));
+        Assert.Equal([((short)1, (bool?)true)], await cenario.Banco.ObterEstadosDownloadAsync("22222222222", ct));
     }
 
     [Theory]
@@ -134,9 +145,9 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.EndsWith($"| Inter | arquivo={nome} | cpf= | causa=ARQUIVO_INVALIDO", Assert.Single(cenario.Ambiente.LinhasLog("Falhas")), StringComparison.Ordinal);
-        Assert.Contains(nome, cenario.Ambiente.Arquivos("Falhas"));
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.EndsWith($"| Inter | arquivo={nome} | cpf= | causa=ARQUIVO_INVALIDO", Assert.Single(cenario.Ambiente.LinhasLog("Fail")), StringComparison.Ordinal);
+        Assert.Contains(nome, cenario.Ambiente.Arquivos("Fail"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal(0, await cenario.Banco.ContarHistoricoAsync(ct));
         Assert.Equal([(short)0], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
     }
@@ -151,8 +162,8 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.Equal(["a.csv", "b.json.tmp"], cenario.Ambiente.Arquivos("Imput"));
-        Assert.Empty(cenario.Ambiente.LinhasLog("Falhas"));
+        Assert.Equal(["a.csv", "b.json.tmp"], cenario.Ambiente.Arquivos("Input"));
+        Assert.Empty(cenario.Ambiente.LinhasLog("Fail"));
     }
 
     [Fact]
@@ -167,9 +178,47 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
         cenario.Ambiente.Depositar("copia.txt", "22222222222,1,Maria\r\n");
         await cenario.CicloAsync(ct);
 
-        Assert.Single(cenario.Ambiente.LinhasLog("Auditoria"));
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+    }
+
+    [Fact]
+    public async Task US2_cenario5_tudo_falho_so_gera_o_arquivo_de_Fail()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
+        cenario.Ambiente.Depositar("b.txt", "77777777777,1,Sem cadastro\r\n88888888888,2,Outro\r\n");
+
+        await cenario.CicloAsync(ct);
+
+        Assert.Equal(["b.txt"], cenario.Ambiente.Arquivos("Fail").Where(a => a.EndsWith(".txt", StringComparison.Ordinal)));
+        Assert.Equal("77777777777,1,Sem cadastro\r\n88888888888,2,Outro\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", "b.txt"), ct));
+        Assert.Empty(cenario.Ambiente.Arquivos("Processed"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+    }
+
+    [Fact]
+    public async Task Arquivo_de_falhas_com_mesmo_nome_e_conteudo_diferente_recebe_nome_unico_sem_sobrescrever()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
+        cenario.Ambiente.Depositar("c.txt", "77777777777,1,Primeiro\r\n");
+        await cenario.CicloAsync(ct);
+
+        // O mesmo nome reenviado dias depois, com outro conteúdo.
+        cenario.Ambiente.Depositar("c.txt", "88888888888,1,Segundo\r\n");
+        await cenario.CicloAsync(ct);
+
+        var falhas = cenario.Ambiente.Arquivos("Fail").Where(a => a.EndsWith(".txt", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, falhas.Length);
+        Assert.Equal("77777777777,1,Primeiro\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", "c.txt"), ct));
+        var segundo = Assert.Single(falhas, a => a != "c.txt");
+        Assert.Matches(@"^c__[0-9a-f]{8}\.txt$", segundo);
+        Assert.Equal("88888888888,1,Segundo\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", segundo), ct));
     }
 
     [Fact]
@@ -182,8 +231,8 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.EndsWith("| cpf= | causa=DADO_INVALIDO", Assert.Single(cenario.Ambiente.LinhasLog("Falhas")), StringComparison.Ordinal);
-        Assert.Contains("nome_responsavel=Maria \"aspas\"; DELETE | status=INATIVADO", Assert.Single(cenario.Ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
+        Assert.EndsWith("| cpf= | causa=DADO_INVALIDO", Assert.Single(cenario.Ambiente.LinhasLog("Fail")), StringComparison.Ordinal);
+        Assert.Contains("nome_responsavel=Maria \"aspas\"; DELETE | status=INATIVADO", Assert.Single(cenario.Ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
     }
 
@@ -192,14 +241,14 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
-        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, 1, ct);
-        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, 2, ct);
+        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, 1, cancelamento: ct);
+        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, 2, cancelamento: ct);
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
 
         await cenario.CicloAsync(ct);
 
         Assert.Equal([(short)1, (short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
-        Assert.Single(cenario.Ambiente.LinhasLog("Auditoria"));
+        Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
         var aviso = Assert.Single(cenario.Ambiente.Logs.Entradas, e => e.Mensagem.Contains("CpfComMultiplosCadastros", StringComparison.Ordinal));
         Assert.DoesNotContain("22222222222", aviso.Mensagem, StringComparison.Ordinal);
     }

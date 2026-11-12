@@ -37,6 +37,8 @@
 
 **Regras**:
 - `PENDENCIA_ACIMA_LIMITE` aparece quando algum registro está pendente há mais de `Processamento:AlertaPendenciaHoras` (padrão 24 h) e sai no 1º ciclo sem pendências acima do limite (FR-042, SC-011).
+- *Adicionado pela feature 002 (FR-007a)*: `ENTREGA_PENDENTE_ACIMA_LIMITE` (somente Inter) aparece quando a entrega pendente mais antiga entrou na fila `Output` há mais de `Processamento:AlertaPendenciaHoras`, com `quantidade` = entregas pendentes; sai no 1º ciclo sem entrega pendente acima do limite.
+- *Feature 002*: as pastas de dados pessoais verificadas por `PERMISSAO_ABERTA_DADOS_PESSOAIS` passam a ser `Logs` e `Fail`; a entrada passa a ser `Input` (ver `specs/002-ajustes-pastas-fluxo/contracts/estrutura-pastas.md`).
 - O arquivo **não contém** CPF, nome, string de conexão nem caminho de pasta.
 - `backlog.arquivoEntradaMaisAntigoDesde`: data de escrita do arquivo `.json`/`.txt` mais antigo ainda em `Imput` no fim do ciclo, inclusive adiados por instabilidade ou bloqueio; `null` se a entrada está vazia.
 - A readiness das dependências é sondada a cada ciclo (WAccess `SELECT 1`; destino da replicação no Inter), mesmo sem arquivos a processar.

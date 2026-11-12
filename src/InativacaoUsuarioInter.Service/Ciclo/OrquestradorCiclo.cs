@@ -21,8 +21,9 @@ public interface IOrquestradorCiclo
 }
 
 /// <summary>
-/// Ciclo (plan.md, "Fluxo do ciclo"): saúde → limpeza de temporários próprios → recuperação → elegíveis →
-/// arquivo a arquivo → replicação (somente Inter, depois dos arquivos novos) → alertas e saúde.
+/// Ciclo (feature 002, plan.md "Ordem do ciclo"): saúde → pastas da própria raiz → migração das pastas antigas →
+/// limpeza de temporários próprios → recuperação → elegíveis de <c>Input</c> → arquivo a arquivo →
+/// entrega ao Condomínio (somente Inter, no mesmo ciclo, contracts/replicacao.md v2) → alertas e saúde.
 /// Erro em um arquivo é classificado e registrado sem interromper os demais (FR-027).
 /// </summary>
 internal sealed partial class OrquestradorCiclo(
@@ -30,6 +31,7 @@ internal sealed partial class OrquestradorCiclo(
     IPoliticaFluxo politica,
     IArmazenamentoEstado estado,
     IGerenciadorArquivos gerenciador,
+    MigradorLegado migrador,
     DetectorElegiveis detector,
     ProcessadorArquivo processador,
     Recuperacao recuperacao,
@@ -55,6 +57,7 @@ internal sealed partial class OrquestradorCiclo(
         try
         {
             await gerenciador.GarantirEstruturaAsync(dependencias.Orcamento, cancelamento);
+            await migrador.MigrarAsync(dependencias.Orcamento, cancelamento);
             await gerenciador.LimparTemporariosAsync(dependencias.Orcamento, cancelamento);
             await recuperacao.ExecutarAsync(cancelamento);
 
@@ -75,7 +78,8 @@ internal sealed partial class OrquestradorCiclo(
 
             if (politica.Replica)
             {
-                // Depois de processados todos os arquivos novos do ciclo (FR-032).
+                // No mesmo ciclo, depois de processados os arquivos de Input (feature 002, FR-006/FR-007).
+                // Falha do destino é transitória da entrega e não afeta o que já foi processado (FR-002a).
                 await replicacao.EntregarPendentesAsync(cancelamento);
             }
 

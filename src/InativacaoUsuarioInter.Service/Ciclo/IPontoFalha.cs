@@ -12,6 +12,15 @@ public enum PontoFalha
     AposGravarPartes,
     AntesRemoverOriginal,
     AposCopiaTemporaria,
+
+    /// <summary>Feature 002: após mover um arquivo de uma pasta antiga (migração, FR-004).</summary>
+    AposMoverLegado,
+
+    /// <summary>Feature 002: após substituir o log de destino pela mescla, antes de remover o log antigo.</summary>
+    AposSubstituirLogLegado,
+
+    /// <summary>Feature 002: após registrar <c>Entregue</c> no diário, antes de limpar <c>Output</c> (FR-008).</summary>
+    AposRegistrarEntregue,
 }
 
 /// <summary>Ponto de injeção de falhas. Em produção é no-op.</summary>

@@ -27,6 +27,9 @@ internal static class CodigosAlerta
     public const string PermissaoNegada = "PERMISSAO_NEGADA";
     public const string ConfiguracaoWAccess = "CONFIGURACAO_WACCESS";
     public const string ArquivoOutputDesconhecido = "ARQUIVO_OUTPUT_DESCONHECIDO";
+
+    /// <summary>Feature 002 (FR-007a): entrega ao Condomínio parada na fila <c>Output</c> além do limite.</summary>
+    public const string EntregaPendenteAcimaLimite = "ENTREGA_PENDENTE_ACIMA_LIMITE";
     public const string PermissaoAbertaDadosPessoais = "PERMISSAO_ABERTA_DADOS_PESSOAIS";
 }
 
@@ -102,6 +105,13 @@ internal sealed partial class PublicadorSaudeArquivo(
             && falhaWAccess.Categoria == CategoriaErro.Configuracao)
         {
             ativos[CodigosAlerta.ConfiguracaoWAccess] = 1;
+        }
+
+        if (politica.Replica
+            && await estado.ObterEntregaPendenteMaisAntigaAsync(cancelamento) is { } entregaMaisAntiga
+            && entregaMaisAntiga < limite)
+        {
+            ativos[CodigosAlerta.EntregaPendenteAcimaLimite] = await estado.ContarEntregasPendentesAsync(cancelamento);
         }
 
         if (politica.Replica && dependencias.ArquivosOutputDesconhecidos > 0)

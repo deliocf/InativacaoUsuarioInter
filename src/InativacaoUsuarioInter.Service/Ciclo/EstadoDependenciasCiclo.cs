@@ -20,7 +20,7 @@ internal sealed class EstadoDependenciasCiclo
     /// <summary>Arquivos em <c>Output</c> desconhecidos do diário, vistos no ciclo (alerta, análise N2).</summary>
     public int ArquivosOutputDesconhecidos { get; set; }
 
-    /// <summary>Data de escrita do arquivo mais antigo ainda em <c>Imput</c> no fim do ciclo (null = nenhum).</summary>
+    /// <summary>Data de escrita do arquivo mais antigo ainda em <c>Input</c> no fim do ciclo (null = nenhum).</summary>
     public DateTimeOffset? ArquivoEntradaMaisAntigoDesde { get; set; }
 
     /// <summary>Pastas com dados pessoais legíveis por grupos amplos (FR-038, alerta PERMISSAO_ABERTA_DADOS_PESSOAIS).</summary>

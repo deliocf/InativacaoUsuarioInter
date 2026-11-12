@@ -7,8 +7,11 @@ using Microsoft.Data.SqlClient;
 
 namespace InativacaoUsuarioInter.Service.Inativacao;
 
-/// <summary>Resultado do passo B (alteração): linhas inativadas por este comando e cadastros existentes.</summary>
-public readonly record struct ResultadoInativacao(int Inativados, int Existentes);
+/// <summary>
+/// Resultado do passo B (alteração): linhas que mudaram de estado (antes <c>CHState &lt;&gt; 1</c>), linhas já inativas que
+/// só receberam a marca <c>CHDownloadRequired = 1</c> (feature 002, FR-015) e cadastros existentes.
+/// </summary>
+public readonly record struct ResultadoInativacao(int Inativados, int SomenteDownload, int Existentes);
 
 /// <summary>Acesso ao WAccess da instância corrente (contracts/waccess-inativacao.md).</summary>
 public interface IRepositorioWAccess
@@ -16,7 +19,10 @@ public interface IRepositorioWAccess
     /// <summary>Passo A — pré-leitura do estado anterior.</summary>
     Task<EstadoAnterior> LerEstadoAsync(string cpf, OrcamentoCiclo? orcamento, CancellationToken cancelamento);
 
-    /// <summary>Passo B — <c>UPDATE</c> condicional, só quando o estado anterior é <c>Ativo</c>.</summary>
+    /// <summary>
+    /// Passo B — <c>UPDATE</c> condicional, executado quando o estado anterior é <c>Ativo</c> ou <c>Inativo</c>
+    /// (feature 002: o já inativo pode precisar só da marca de download).
+    /// </summary>
     Task<ResultadoInativacao> InativarAsync(string cpf, OrcamentoCiclo? orcamento, CancellationToken cancelamento);
 }
 
@@ -51,13 +57,17 @@ internal sealed class RepositorioWAccessSql : IRepositorioWAccess
         FROM dbo.CHMain WHERE IdNumber = @Cpf;
         """;
 
+    // Feature 002 (contracts/waccess-inativacao.md v2, research R-01/R-02): CHDownloadRequired é bit NULL;
+    // NULL e 0 significam "sem marca". deleted.CHState separa inativações de marcações só de download.
     public const string SqlInativacao = """
-        DECLARE @afetados TABLE (CHID int);
-        UPDATE dbo.CHMain SET CHState = 1
-          OUTPUT inserted.CHID INTO @afetados
-          WHERE IdNumber = @Cpf AND CHState <> 1;
-        SELECT (SELECT COUNT(*) FROM @afetados)                      AS Inativados,
-               (SELECT COUNT(*) FROM dbo.CHMain WHERE IdNumber = @Cpf) AS Existentes;
+        DECLARE @afetados TABLE (CHID int, EstadoAnterior smallint);
+        UPDATE dbo.CHMain SET CHState = 1, CHDownloadRequired = 1
+          OUTPUT inserted.CHID, deleted.CHState INTO @afetados
+          WHERE IdNumber = @Cpf
+            AND (CHState <> 1 OR CHDownloadRequired IS NULL OR CHDownloadRequired = 0);
+        SELECT (SELECT COUNT(*) FROM @afetados WHERE EstadoAnterior <> 1)  AS Inativados,
+               (SELECT COUNT(*) FROM @afetados WHERE EstadoAnterior = 1)   AS SomenteDownload,
+               (SELECT COUNT(*) FROM dbo.CHMain WHERE IdNumber = @Cpf)     AS Existentes;
         """;
 
     private readonly ProvedorPipelines _pipelines;
@@ -111,11 +121,12 @@ internal sealed class RepositorioWAccessSql : IRepositorioWAccess
                 await using (var leitor = await comando.ExecuteReaderAsync(ct))
                 {
                     await leitor.ReadAsync(ct);
-                    resultado = new ResultadoInativacao(leitor.GetInt32(0), leitor.GetInt32(1));
+                    resultado = new ResultadoInativacao(leitor.GetInt32(0), leitor.GetInt32(1), leitor.GetInt32(2));
                 }
 
                 await transacao.CommitAsync(ct);
                 atividade?.SetTag(Instrumentacao.Atributos.LinhasAfetadas, resultado.Inativados);
+                atividade?.SetTag(Instrumentacao.Atributos.LinhasMarcadasDownload, resultado.SomenteDownload);
                 return resultado;
             },
             orcamento,

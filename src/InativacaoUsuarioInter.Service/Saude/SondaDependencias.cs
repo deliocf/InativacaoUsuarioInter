@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using InativacaoUsuarioInter.Service.Arquivos;
 using InativacaoUsuarioInter.Service.Ciclo;
 using InativacaoUsuarioInter.Service.Configuracao;
 using InativacaoUsuarioInter.Service.Resiliencia;
@@ -40,7 +41,8 @@ internal sealed partial class SondaDependencias(
                 Dependencias.Replicacao,
                 _ =>
                 {
-                    Directory.CreateDirectory(Path.Combine(configuracao.RaizCondominio, "Imput"));
+                    // Só sonda o destino; falha marca a replicação indisponível sem bloquear o ciclo (FR-002a).
+                    Directory.CreateDirectory(Path.Combine(configuracao.RaizCondominio, NomesPastas.Input));
                     return ValueTask.CompletedTask;
                 },
                 cancelamento);

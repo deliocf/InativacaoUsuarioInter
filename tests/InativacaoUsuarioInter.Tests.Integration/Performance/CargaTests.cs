@@ -41,7 +41,7 @@ public sealed class CargaTests(SqlServerFixture sql)
         cronometro.Stop();
         telemetria.Coletar();
 
-        Assert.Equal(1000, cenario.Ambiente.LinhasLog("Auditoria").Length);
+        Assert.Equal(1000, cenario.Ambiente.LinhasLog("Logs").Length);
         var duracoes = telemetria.Spans.Where(s => s.DisplayName == "registro").Select(s => s.Duration.TotalMilliseconds).Order().ToList();
         Assert.Equal(1000, duracoes.Count);
         var p95 = duracoes[(int)Math.Ceiling(0.95 * duracoes.Count) - 1];
@@ -67,7 +67,7 @@ public sealed class CargaTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         Assert.True(cronometro.Elapsed <= TimeSpan.FromSeconds(10), $"Arquivo típico em {cronometro.Elapsed.TotalSeconds:F1} s.");
-        Assert.Equal(3, cenario.Ambiente.LinhasLog("Auditoria").Length);
+        Assert.Equal(3, cenario.Ambiente.LinhasLog("Logs").Length);
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public sealed class CargaTests(SqlServerFixture sql)
             try
             {
             var prazo = Stopwatch.StartNew();
-            while (prazo.Elapsed < TimeSpan.FromMinutes(5) && ambiente.LinhasLog("Auditoria").Length < 1000 && !servico.HasExited)
+            while (prazo.Elapsed < TimeSpan.FromMinutes(5) && ambiente.LinhasLog("Logs").Length < 1000 && !servico.HasExited)
             {
                 servico.Refresh();
                 pico = Math.Max(pico, servico.PeakWorkingSet64);
@@ -113,7 +113,7 @@ public sealed class CargaTests(SqlServerFixture sql)
             }
         }
 
-        Assert.Equal(1000, ambiente.LinhasLog("Auditoria").Length);
+        Assert.Equal(1000, ambiente.LinhasLog("Logs").Length);
         Assert.True(pico > 0, "Pico de memória do serviço não medido.");
         Assert.True(pico <= 512L * 1024 * 1024, $"Pico de memória do serviço = {pico / (1024 * 1024)} MB (> 512 MB).");
     }

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using InativacaoUsuarioInter.Service;
+using InativacaoUsuarioInter.Service.Arquivos;
 using InativacaoUsuarioInter.Service.Configuracao;
 using InativacaoUsuarioInter.Service.Telemetria;
 using Microsoft.Data.Sqlite;
@@ -119,10 +120,24 @@ public sealed class AmbienteTeste : IDisposable
 
     public string PastaCondominio(params string[] partes) => Path.Combine([RaizCondominio, .. partes]);
 
-    /// <summary>Deposita um arquivo em <c>Imput</c> da instância, já estável (escrita há 1 hora).</summary>
+    /// <summary>Deposita um arquivo em <c>Input</c> da instância, já estável (escrita há 1 hora).</summary>
     public string Depositar(string nome, string conteudo, string? raiz = null)
     {
-        var pasta = Path.Combine(raiz ?? RaizInstancia, "Imput");
+        var pasta = Path.Combine(raiz ?? RaizInstancia, NomesPastas.Input);
+        Directory.CreateDirectory(pasta);
+        var caminho = Path.Combine(pasta, nome);
+        File.WriteAllText(caminho, conteudo, new UTF8Encoding(false));
+        File.SetLastWriteTimeUtc(caminho, DateTime.UtcNow.AddHours(-1));
+        return caminho;
+    }
+
+    /// <summary>
+    /// Cria um arquivo numa pasta com nome antigo (feature 001) sob a raiz, para os testes de migração (FR-004).
+    /// Único ponto dos utilitários de teste que usa os nomes antigos.
+    /// </summary>
+    public string CriarLegado(string pastaAntiga, string nome, string conteudo, string? raiz = null)
+    {
+        var pasta = Path.Combine(raiz ?? RaizInstancia, pastaAntiga);
         Directory.CreateDirectory(pasta);
         var caminho = Path.Combine(pasta, nome);
         File.WriteAllText(caminho, conteudo, new UTF8Encoding(false));

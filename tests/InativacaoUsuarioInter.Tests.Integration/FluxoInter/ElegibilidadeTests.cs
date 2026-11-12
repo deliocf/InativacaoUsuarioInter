@@ -16,13 +16,13 @@ public sealed class ElegibilidadeTests(SqlServerFixture sql)
         await using (new FileStream(caminho, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
         {
             await cenario.CicloAsync(ct);
-            Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Imput"));
+            Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Input"));
             Assert.Equal([(short)0], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
         }
 
         await cenario.CicloAsync(ct);
 
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
     }
 
@@ -43,12 +43,12 @@ public sealed class ElegibilidadeTests(SqlServerFixture sql)
         File.SetLastWriteTimeUtc(caminho, cenario.Ambiente.Relogio!.GetUtcNow().UtcDateTime);
 
         await cenario.CicloAsync(ct);
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Imput"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Input"));
 
         cenario.Ambiente.Relogio.Advance(TimeSpan.FromSeconds(6));
         await cenario.CicloAsync(ct);
 
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
     }
 }

@@ -20,7 +20,7 @@ public sealed class CopiaParcialTests(SqlServerFixture sql)
 
         await Assert.ThrowsAsync<InterrupcaoSimuladaException>(() => cenario.CicloAsync(ct));
 
-        var noDestino = cenario.Ambiente.Arquivos("Imput", cenario.Ambiente.RaizCondominio);
+        var noDestino = cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio);
         Assert.Equal(["a.txt.tmp"], noDestino);
         Assert.All(noDestino, a => Assert.Null(LeitorArquivo.FormatoPorExtensao(a)));
 
@@ -28,7 +28,11 @@ public sealed class CopiaParcialTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         // O sidecar .traceparent só existe com rastreamento ativo (ver ReplicacaoContratoTests); aqui não há ouvinte.
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Imput", cenario.Ambiente.RaizCondominio).Where(a => !a.EndsWith(".traceparent", StringComparison.Ordinal)));
-        Assert.Equal("22222222222,1,Maria\r\n", await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Imput", "a.txt"), ct));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio).Where(a => !a.EndsWith(".traceparent", StringComparison.Ordinal)));
+        Assert.Equal("22222222222,1,Maria\r\n", await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Input", "a.txt"), ct));
+
+        // Feature 002: depois da entrega confirmada a fila Output fica vazia; o histórico está em Processed.
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
     }
 }

@@ -65,5 +65,11 @@ internal static class Migracoes
             hash TEXT NOT NULL
         );
         """,
+        // v3 (feature 002, data-model §2): instante em que a entrega entrou na fila Output (alerta R-07).
+        // Aplicada uma única vez, na mesma transação do registro em versao_esquema.
+        """
+        ALTER TABLE entrega ADD COLUMN registrada_em TEXT NULL;
+        UPDATE entrega SET registrada_em = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE registrada_em IS NULL;
+        """,
     ];
 }

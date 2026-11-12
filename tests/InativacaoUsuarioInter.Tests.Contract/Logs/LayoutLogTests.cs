@@ -69,8 +69,8 @@ public sealed class LayoutLogTests : IDisposable
         await escritor.AnexarAsync(TipoLog.Auditoria, linha2, null, TestContext.Current.CancellationToken);
         var bytes = await File.ReadAllBytesAsync(escritor.Caminho(TipoLog.Auditoria), TestContext.Current.CancellationToken);
 
-        Assert.Equal(Path.Combine(_pasta, "Auditoria", "log_inativacao.log"), escritor.Caminho(TipoLog.Auditoria));
-        Assert.Equal(Path.Combine(_pasta, "Falhas", "log_inativacao.log"), escritor.Caminho(TipoLog.Falhas));
+        Assert.Equal(Path.Combine(_pasta, "Logs", "log_inativacao.log"), escritor.Caminho(TipoLog.Auditoria));
+        Assert.Equal(Path.Combine(_pasta, "Fail", "log_inativacao.log"), escritor.Caminho(TipoLog.Falhas));
         Assert.False(bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }));
         Assert.Equal(linha1 + "\r\n" + linha2 + "\r\n", new UTF8Encoding(false).GetString(bytes));
         Assert.True(await escritor.ContemLinhaAsync(TipoLog.Auditoria, linha2, TestContext.Current.CancellationToken));

@@ -41,7 +41,7 @@ public sealed class CoberturaTelemetriaTests(SqlServerFixture sql)
             await inter.GetRequiredService<IOrquestradorCiclo>().ExecutarCicloAsync(ct);
         }
 
-        foreach (var arquivo in Directory.GetFiles(ambiente.PastaCondominio("Imput")))
+        foreach (var arquivo in Directory.GetFiles(ambiente.PastaCondominio("Input")))
         {
             File.SetLastWriteTimeUtc(arquivo, DateTime.UtcNow.AddHours(-1));
         }
@@ -65,6 +65,9 @@ public sealed class CoberturaTelemetriaTests(SqlServerFixture sql)
         Exigir(spans, "registro", Instrumentacao.Atributos.Arquivo, Instrumentacao.Atributos.ChaveIdempotencia, Instrumentacao.Atributos.Resultado, Instrumentacao.Atributos.Tentativa);
         Exigir(spans, "replicacao.copiar", Instrumentacao.Atributos.Arquivo, Instrumentacao.Atributos.ChaveIdempotencia, Instrumentacao.Atributos.Resultado, Instrumentacao.Atributos.Tentativa);
         Exigir(spans, "arquivo.mover", Instrumentacao.Atributos.Arquivo, Instrumentacao.Atributos.ChaveIdempotencia);
+        // Feature 002 (T034): o passo B informa as linhas inativadas e as que só receberam a marca de download.
+        Exigir(spans, "waccess.inativar", Instrumentacao.Atributos.LinhasAfetadas, Instrumentacao.Atributos.LinhasMarcadasDownload);
+        Assert.Contains(spans, s => s.DisplayName == "waccess.inativar" && Equals(s.GetTagItem(Instrumentacao.Atributos.LinhasMarcadasDownload), 1));
         Assert.Contains(spans, s => Equals(s.GetTagItem(Instrumentacao.Atributos.Instancia), "Condominio"));
 
         var senha = new SqlConnectionStringBuilder(bancoInter.StringConexao).Password;

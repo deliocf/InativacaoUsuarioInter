@@ -47,6 +47,42 @@ public sealed class AlertaPendenciaTests(SqlServerFixture sql)
 
         Assert.Equal("Saudavel", saude.GetProperty("status").GetString());
         Assert.Equal(0, saude.GetProperty("alertas").GetArrayLength());
-        Assert.Single(cenario.Ambiente.LinhasLog("Auditoria"));
+        Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
+    }
+
+    [Fact]
+    public async Task FR007a_entrega_parada_em_Output_alerta_apos_o_limite_e_some_quando_entregue()
+    {
+        // Feature 002 (research R-07): referência é o instante em que a entrega entrou na fila (registrada_em).
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await Cenario.CriarAsync(sql, ajustarAmbiente: a => a.UsarRelogioSimulado(), cancelamento: ct);
+        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, cancelamento: ct);
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
+        var relogio = cenario.Ambiente.Relogio!;
+        await File.WriteAllTextAsync(cenario.Ambiente.RaizCondominio, "destino indisponível", ct);
+
+        await cenario.CicloAsync(ct);
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.DoesNotContain(
+            LerSaude(cenario.Ambiente).GetProperty("alertas").EnumerateArray(),
+            a => a.GetProperty("codigo").GetString() == "ENTREGA_PENDENTE_ACIMA_LIMITE");
+
+        relogio.Advance(TimeSpan.FromHours(24) + TimeSpan.FromMinutes(1));
+        await cenario.CicloAsync(ct);
+        var alerta = Assert.Single(
+            LerSaude(cenario.Ambiente).GetProperty("alertas").EnumerateArray(),
+            a => a.GetProperty("codigo").GetString() == "ENTREGA_PENDENTE_ACIMA_LIMITE");
+        Assert.Equal(1, alerta.GetProperty("quantidade").GetInt32());
+
+        File.Delete(cenario.Ambiente.RaizCondominio);
+        relogio.Advance(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(5.5), ct);
+        await cenario.CicloAsync(ct);
+
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Contains("a.txt", cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
+        Assert.DoesNotContain(
+            LerSaude(cenario.Ambiente).GetProperty("alertas").EnumerateArray(),
+            a => a.GetProperty("codigo").GetString() == "ENTREGA_PENDENTE_ACIMA_LIMITE");
     }
 }

@@ -1,5 +1,7 @@
 # Contrato: Logs de Auditoria e Falhas
 
+> **Alterado pela feature 002** — os logs passam a ficar em `Logs/log_inativacao.log` (auditoria) e `Fail/log_inativacao.log` (falhas); o layout de linha não muda. Ver [`specs/002-ajustes-pastas-fluxo/contracts/estrutura-pastas.md`](../../002-ajustes-pastas-fluxo/contracts/estrutura-pastas.md).
+
 **Origem**: FR-019, FR-020, FR-020a; Clarification Q4 (2026-11-11).
 **Teste de contrato**: `tests/InativacaoUsuarioInter.Tests.Contract/Logs/*`, com golden files.
 

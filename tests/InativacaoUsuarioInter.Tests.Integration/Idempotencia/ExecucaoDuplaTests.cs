@@ -82,9 +82,12 @@ public sealed class ExecucaoDuplaTests(SqlServerFixture sql)
         var segunda = await FotografarAsync(cenario);
 
         Assert.Equal(primeira, segunda);
-        Assert.Equal(2, cenario.Ambiente.LinhasLog("Auditoria").Length);
-        Assert.Equal(3, cenario.Ambiente.LinhasLog("Falhas").Length);
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
-        Assert.Equal(1, await cenario.Banco.ContarHistoricoAsync(ct));
+        Assert.Equal(2, cenario.Ambiente.LinhasLog("Logs").Length);
+        Assert.Equal(3, cenario.Ambiente.LinhasLog("Fail").Length);
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+        // 22222222222 inativado + 33333333333 (já inativo, sem marca) recebe só a marca de download (feature 002, FR-015):
+        // duas alterações na primeira passada e nenhuma nas seguintes.
+        Assert.Equal(2, await cenario.Banco.ContarHistoricoAsync(ct));
+        Assert.Equal([((short)1, (bool?)true)], await cenario.Banco.ObterEstadosDownloadAsync("33333333333", ct));
     }
 }

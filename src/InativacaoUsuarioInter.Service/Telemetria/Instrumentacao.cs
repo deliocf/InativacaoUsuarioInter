@@ -52,7 +52,7 @@ internal static class Instrumentacao
             "idade_arquivo_entrada_mais_antigo_s",
             () => EstadoMetricas.IdadeArquivoEntradaMaisAntigoSegundos,
             "s",
-            "Idade do arquivo mais antigo ainda não processado em Imput (inclui adiados).");
+            "Idade do arquivo mais antigo ainda não processado em Input (inclui adiados).");
     }
 
     /// <summary>Abre um span de domínio já com o atributo de instância.</summary>
@@ -80,6 +80,9 @@ internal static class Instrumentacao
         public const string Resultado = "resultado";
         public const string Tentativa = "tentativa";
         public const string LinhasAfetadas = "waccess.linhas_afetadas";
+
+        /// <summary>Feature 002: linhas já inativas que só receberam <c>CHDownloadRequired = 1</c>.</summary>
+        public const string LinhasMarcadasDownload = "waccess.linhas_marcadas_download";
         public const string Dependencia = "dependencia";
         public const string StatusDetalhado = "resultado.detalhe";
     }

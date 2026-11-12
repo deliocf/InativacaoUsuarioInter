@@ -92,7 +92,7 @@ public sealed class ConvergenciaSaudeTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
         Assert.Equal(0, Saude(cenario.Ambiente).GetProperty("alertas").GetArrayLength());
 
-        var restaurar = AbrirLeitura(cenario.Ambiente.Pasta("Auditoria"));
+        var restaurar = AbrirLeitura(cenario.Ambiente.Pasta("Logs"));
         try
         {
             await cenario.CicloAsync(ct);

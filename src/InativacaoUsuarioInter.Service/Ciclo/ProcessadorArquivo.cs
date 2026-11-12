@@ -203,7 +203,9 @@ internal sealed partial class ProcessadorArquivo(
             }
 
             pontoFalha.Atingido(PontoFalha.AposIntencao);
-            passoB = anterior == EstadoAnterior.Ativo
+            // Feature 002 (FR-015): o já inativo também passa pelo passo B, que só grava a marca de download
+            // se faltar; a classificação continua vindo do estado anterior gravado (JA_INATIVO).
+            passoB = anterior is EstadoAnterior.Ativo or EstadoAnterior.Inativo
                 ? await repositorio.InativarAsync(registro.Cpf!, orcamento, cancelamento)
                 : null;
             pontoFalha.Atingido(PontoFalha.AposComandoWAccess);

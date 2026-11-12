@@ -1,11 +1,12 @@
 using System.Text;
+using InativacaoUsuarioInter.Service.Arquivos;
 using InativacaoUsuarioInter.Service.Configuracao;
 using InativacaoUsuarioInter.Service.Estado;
 using InativacaoUsuarioInter.Service.Resiliencia;
 
 namespace InativacaoUsuarioInter.Service.Registros;
 
-/// <summary>Logs contratuais de Auditoria e Falhas (somente acréscimo).</summary>
+/// <summary>Logs contratuais de auditoria (<c>Logs/</c>) e falhas (<c>Fail/</c>), somente acréscimo (FR-003).</summary>
 public interface IRegistroLogs
 {
     /// <summary>Acrescenta exatamente uma linha (via pipeline <c>pasta-local</c>).</summary>
@@ -24,12 +25,12 @@ public interface IRegistroLogs
 /// </summary>
 internal sealed class EscritorLogAppendOnly(ConfiguracaoServico configuracao, ProvedorPipelines pipelines) : IRegistroLogs
 {
-    public const string NomeArquivo = "log_inativacao.log";
+    public const string NomeArquivo = NomesPastas.NomeLog;
 
     private static readonly UTF8Encoding Utf8SemBom = new(encoderShouldEmitUTF8Identifier: false);
 
     public string Caminho(TipoLog tipo) =>
-        Path.Combine(configuracao.RaizInstancia, tipo == TipoLog.Auditoria ? "Auditoria" : "Falhas", NomeArquivo);
+        Path.Combine(configuracao.RaizInstancia, tipo == TipoLog.Auditoria ? NomesPastas.Logs : NomesPastas.Fail, NomeArquivo);
 
     public async Task AnexarAsync(TipoLog tipo, string linha, OrcamentoCiclo? orcamento, CancellationToken cancelamento)
     {

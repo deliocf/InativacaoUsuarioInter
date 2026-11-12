@@ -25,7 +25,7 @@ public sealed class RecuperacaoTests : IDisposable
 
         public Exception? FalharInativacao { get; set; }
 
-        public ResultadoInativacao Resultado { get; set; } = new(1, 1);
+        public ResultadoInativacao Resultado { get; set; } = new(1, 0, 1);
 
         public Task<EstadoAnterior> LerEstadoAsync(string cpf, OrcamentoCiclo? orcamento, CancellationToken cancelamento)
         {
@@ -56,19 +56,19 @@ public sealed class RecuperacaoTests : IDisposable
         _ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         var repositorio = new RepositorioFalso(EstadoAnterior.Ativo) { FalharInativacao = new TimeoutException() };
         await CicloAsync(repositorio);
-        Assert.Empty(_ambiente.LinhasLog("Auditoria"));
+        Assert.Empty(_ambiente.LinhasLog("Logs"));
 
         repositorio.FalharInativacao = null;
-        repositorio.Resultado = new ResultadoInativacao(0, 1);
+        repositorio.Resultado = new ResultadoInativacao(0, 0, 1);
         await CicloAsync(repositorio);
 
         Assert.Equal(1, repositorio.Leituras);
         Assert.Equal(2, repositorio.Inativacoes);
-        Assert.EndsWith("status=INATIVADO", Assert.Single(_ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
+        Assert.EndsWith("status=INATIVADO", Assert.Single(_ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task EmExecucao_inativo_eh_JA_INATIVO_sem_chamar_InativarAsync()
+    public async Task EmExecucao_inativo_eh_JA_INATIVO_e_passo_B_roda_so_para_a_marca_de_download()
     {
         _ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         var repositorio = new RepositorioFalso(EstadoAnterior.Inativo);
@@ -76,9 +76,11 @@ public sealed class RecuperacaoTests : IDisposable
 
         await CicloAsync(repositorio);
 
+        // Feature 002 (FR-015): a retomada usa o estado anterior gravado (Inativo) e executa o passo B uma vez,
+        // que só grava CHDownloadRequired se faltar; a auditoria continua JA_INATIVO.
         Assert.Equal(1, repositorio.Leituras);
-        Assert.Equal(0, repositorio.Inativacoes);
-        Assert.EndsWith("status=JA_INATIVO", Assert.Single(_ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
+        Assert.Equal(1, repositorio.Inativacoes);
+        Assert.EndsWith("status=JA_INATIVO", Assert.Single(_ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,7 +93,7 @@ public sealed class RecuperacaoTests : IDisposable
         await CicloAsync(repositorio);
 
         Assert.Equal(0, repositorio.Inativacoes);
-        Assert.EndsWith("causa=CPF_NAO_ENCONTRADO", Assert.Single(_ambiente.LinhasLog("Falhas")), StringComparison.Ordinal);
+        Assert.EndsWith("causa=CPF_NAO_ENCONTRADO", Assert.Single(_ambiente.LinhasLog("Fail")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -106,7 +108,7 @@ public sealed class RecuperacaoTests : IDisposable
 
         Assert.Equal(2, repositorio.Leituras);
         Assert.Equal(1, repositorio.Inativacoes);
-        Assert.Single(_ambiente.LinhasLog("Auditoria"));
+        Assert.Single(_ambiente.LinhasLog("Logs"));
     }
 
     [Fact]
@@ -115,11 +117,11 @@ public sealed class RecuperacaoTests : IDisposable
         _ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         var repositorio = new RepositorioFalso(EstadoAnterior.Ativo);
         await Assert.ThrowsAsync<InterrupcaoSimuladaException>(() => CicloAsync(repositorio, new PontoFalhaEmProcesso(PontoFalha.AposAppendLog)));
-        Assert.Single(_ambiente.LinhasLog("Auditoria"));
+        Assert.Single(_ambiente.LinhasLog("Logs"));
 
         await CicloAsync(repositorio);
 
-        Assert.Single(_ambiente.LinhasLog("Auditoria"));
+        Assert.Single(_ambiente.LinhasLog("Logs"));
         Assert.Equal(1, repositorio.Inativacoes);
     }
 
@@ -129,12 +131,12 @@ public sealed class RecuperacaoTests : IDisposable
         _ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         var repositorio = new RepositorioFalso(EstadoAnterior.Ativo);
         await Assert.ThrowsAsync<InterrupcaoSimuladaException>(() => CicloAsync(repositorio, new PontoFalhaEmProcesso(PontoFalha.AposRegistrarResultado)));
-        Assert.Empty(_ambiente.LinhasLog("Auditoria"));
+        Assert.Empty(_ambiente.LinhasLog("Logs"));
 
         await CicloAsync(repositorio);
         await CicloAsync(repositorio);
 
-        Assert.Single(_ambiente.LinhasLog("Auditoria"));
+        Assert.Single(_ambiente.LinhasLog("Logs"));
         Assert.Equal(1, repositorio.Inativacoes);
     }
 
@@ -143,7 +145,7 @@ public sealed class RecuperacaoTests : IDisposable
     [InlineData(EstadoAnterior.Ativo, 0, 1, ResultadoRegistro.Inativado)]
     [InlineData(EstadoAnterior.Ativo, 0, 0, ResultadoRegistro.CpfNaoEncontrado)]
     public void Classificacao_com_passo_B(EstadoAnterior anterior, int inativados, int existentes, ResultadoRegistro esperado) =>
-        Assert.Equal(esperado, ClassificacaoWAccess.Classificar(anterior, new ResultadoInativacao(inativados, existentes)));
+        Assert.Equal(esperado, ClassificacaoWAccess.Classificar(anterior, new ResultadoInativacao(inativados, 0, existentes)));
 
     [Fact]
     public void Classificacao_sem_passo_B()

@@ -45,21 +45,21 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
         proxy.Cortar();
         await cenario.CicloAsync(ct);
 
-        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Imput"));
-        Assert.Empty(cenario.Ambiente.LinhasLog("Auditoria"));
-        Assert.Empty(cenario.Ambiente.LinhasLog("Falhas"));
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Input"));
+        Assert.Empty(cenario.Ambiente.LinhasLog("Logs"));
+        Assert.Empty(cenario.Ambiente.LinhasLog("Fail"));
         Assert.Equal(3, await cenario.Obter<IArmazenamentoEstado>().ContarBacklogAsync(ct));
 
         proxy.Restaurar();
         await cenario.CicloAsync(ct);
-        Assert.Empty(cenario.Ambiente.LinhasLog("Auditoria"));
+        Assert.Empty(cenario.Ambiente.LinhasLog("Logs"));
 
         await Task.Delay(PausaCircuito, ct);
         await cenario.CicloAsync(ct);
 
-        Assert.Equal(3, cenario.Ambiente.LinhasLog("Auditoria").Length);
-        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Output"));
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Equal(3, cenario.Ambiente.LinhasLog("Logs").Length);
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
     }
 
     [Fact]
@@ -80,14 +80,14 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        var sucesso = Assert.Single(cenario.Ambiente.Arquivos("Output"));
+        var sucesso = Assert.Single(cenario.Ambiente.Arquivos("Processed"));
         Assert.Matches(@"^20261111103000__sucesso-[0-9a-f]{8}\.json$", sucesso);
-        var pendente = Assert.Single(cenario.Ambiente.Arquivos("Imput"));
+        var pendente = Assert.Single(cenario.Ambiente.Arquivos("Input"));
         Assert.Matches(@"^20261111103000__pendente-[0-9a-f]{8}\.json$", pendente);
-        var conteudoPendente = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Imput", pendente), ct);
+        var conteudoPendente = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Input", pendente), ct);
         Assert.Contains("44444444444", conteudoPendente, StringComparison.Ordinal);
         Assert.DoesNotContain("22222222222", conteudoPendente, StringComparison.Ordinal);
-        Assert.Equal(2, cenario.Ambiente.LinhasLog("Auditoria").Length);
+        Assert.Equal(2, cenario.Ambiente.LinhasLog("Logs").Length);
 
         var estado = cenario.Obter<IArmazenamentoEstado>();
         var raiz = await OrigemAsync(cenario, sucesso);
@@ -101,10 +101,10 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
         var depois = (await estado.ObterRegistrosAsync(raiz, ct))[antes.Chave];
         Assert.Equal(EstadosRegistro.Inativado, depois.Estado);
         Assert.Equal(antes.PendenteDesde, depois.PendenteDesde);
-        Assert.Equal(3, cenario.Ambiente.LinhasLog("Auditoria").Length);
-        Assert.Equal(2, cenario.Ambiente.Arquivos("Output").Length);
-        Assert.All(cenario.Ambiente.Arquivos("Output"), a => Assert.StartsWith("20261111103000__sucesso-", a, StringComparison.Ordinal));
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
+        Assert.Equal(3, cenario.Ambiente.LinhasLog("Logs").Length);
+        Assert.Equal(2, cenario.Ambiente.Arquivos("Processed").Length);
+        Assert.All(cenario.Ambiente.Arquivos("Processed"), a => Assert.StartsWith("20261111103000__sucesso-", a, StringComparison.Ordinal));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("44444444444", ct));
     }
 
@@ -177,7 +177,7 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
     private static async Task<string> OrigemAsync(Cenario cenario, string parteOutput)
     {
         var ct = TestContext.Current.CancellationToken;
-        var hash = await Service.Arquivos.HashConteudo.CalcularArquivoAsync(cenario.Ambiente.Pasta("Output", parteOutput), ct);
+        var hash = await Service.Arquivos.HashConteudo.CalcularArquivoAsync(cenario.Ambiente.Pasta("Processed", parteOutput), ct);
         var parte = await cenario.Obter<IArmazenamentoEstado>().ObterParteAsync(hash, ct);
         return parte!.HashOrigem;
     }

@@ -1,5 +1,7 @@
 # Contrato: Arquivos de entrada e estrutura de diretórios
 
+> **Alterado pela feature 002** — nomes de pastas e arquivo de falhas com o nome do original: ver [`specs/002-ajustes-pastas-fluxo/contracts/estrutura-pastas.md`](../../002-ajustes-pastas-fluxo/contracts/estrutura-pastas.md). O formato dos arquivos não muda.
+
 **Consumidores**: empregados/sistema gerador (Inter) e a própria instância Inter (Condomínio).
 **Testes de contrato**: `tests/InativacaoUsuarioInter.Tests.Contract/ArquivosEntrada/*`, `EstruturaDiretorios/*`.
 

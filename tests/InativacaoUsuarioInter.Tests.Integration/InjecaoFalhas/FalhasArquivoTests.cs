@@ -14,8 +14,8 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
         await cenario.Banco.InserirUsuarioAsync("22222222222", 0, cancelamento: ct);
-        Directory.CreateDirectory(cenario.Ambiente.Pasta("Auditoria"));
-        var log = cenario.Ambiente.Pasta("Auditoria", "log_inativacao.log");
+        Directory.CreateDirectory(cenario.Ambiente.Pasta("Logs"));
+        var log = cenario.Ambiente.Pasta("Logs", "log_inativacao.log");
         await File.WriteAllTextAsync(log, string.Empty, ct);
         File.SetAttributes(log, FileAttributes.ReadOnly);
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
@@ -24,7 +24,7 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
         {
             await cenario.CicloAsync(ct);
             Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
-            Assert.Empty(cenario.Ambiente.LinhasLog("Auditoria"));
+            Assert.Empty(cenario.Ambiente.LinhasLog("Logs"));
         }
         finally
         {
@@ -36,12 +36,12 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
         await cenario.CicloAsync(ct);
 
-        Assert.EndsWith("status=INATIVADO", Assert.Single(cenario.Ambiente.LinhasLog("Auditoria")), StringComparison.Ordinal);
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.EndsWith("status=INATIVADO", Assert.Single(cenario.Ambiente.LinhasLog("Logs")), StringComparison.Ordinal);
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
     }
 
     [Fact]
-    public async Task Output_sem_permissao_mantem_o_original_na_entrada_sem_perda_nem_duplicacao()
+    public async Task Fila_Output_sem_permissao_mantem_o_original_na_entrada_sem_perda_nem_duplicacao()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
@@ -54,8 +54,8 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
         try
         {
             await cenario.CicloAsync(ct);
-            Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Imput"));
-            Assert.Single(cenario.Ambiente.LinhasLog("Auditoria"));
+            Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Input"));
+            Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
         }
         finally
         {
@@ -64,9 +64,10 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.Empty(cenario.Ambiente.Arquivos("Imput"));
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
-        Assert.Single(cenario.Ambiente.LinhasLog("Auditoria"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
     }
 
     [Fact]
@@ -83,7 +84,7 @@ public sealed class FalhasArquivoTests(SqlServerFixture sql)
             Assert.Equal(0, resumo.ArquivosComErro);
         }
 
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Imput"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Input"));
     }
 
     private static Action NegarEscrita(string pasta)

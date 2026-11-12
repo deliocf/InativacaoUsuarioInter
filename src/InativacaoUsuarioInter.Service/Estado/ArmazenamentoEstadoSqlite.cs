@@ -223,7 +223,7 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
     public Task MarcarLogArquivoGravadoAsync(string hash, CancellationToken cancelamento) =>
         ExecutarComandoAsync("UPDATE arquivo SET log_gravado = 1 WHERE hash = $h;", cancelamento, ("$h", hash));
 
-    public async Task RegistrarParteAsync(ParteGerada parte, bool registrarEntrega, CancellationToken cancelamento)
+    public async Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento)
     {
         ArgumentNullException.ThrowIfNull(parte);
         var agora = Agora();
@@ -238,12 +238,12 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
             await inserir.ExecuteNonQueryAsync(cancelamento);
         }
 
-        if (registrarEntrega)
+        if (nomeEntrega is not null)
         {
             await using var entrega = Comando(
                 conexao,
-                "INSERT OR IGNORE INTO entrega (hash, nome_output, estado) VALUES ($h, $n, 'NaoEntregue');",
-                ("$h", parte.Hash), ("$n", Path.GetFileName(parte.CaminhoFinal)));
+                "INSERT OR IGNORE INTO entrega (hash, nome_output, estado, registrada_em) VALUES ($h, $n, 'NaoEntregue', $r);",
+                ("$h", parte.Hash), ("$n", nomeEntrega), ("$r", agora));
             entrega.Transaction = transacao;
             await entrega.ExecuteNonQueryAsync(cancelamento);
         }
@@ -325,9 +325,28 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
 
     public Task GarantirEntregaAsync(string hash, string nomeOutput, CancellationToken cancelamento) =>
         ExecutarComandoAsync(
-            "INSERT OR IGNORE INTO entrega (hash, nome_output, estado) VALUES ($h, $n, 'NaoEntregue');",
+            "INSERT OR IGNORE INTO entrega (hash, nome_output, estado, registrada_em) VALUES ($h, $n, 'NaoEntregue', $r);",
             cancelamento,
-            ("$h", hash), ("$n", nomeOutput));
+            ("$h", hash), ("$n", nomeOutput), ("$r", Agora()));
+
+    public async Task<EntregaRegistrada?> ObterEntregaAsync(string hash, CancellationToken cancelamento)
+    {
+        await using var conexao = await AbrirAsync(cancelamento);
+        await using var comando = Comando(
+            conexao, "SELECT hash, estado, nome_output, nome_destino FROM entrega WHERE hash = $h;", ("$h", hash));
+        await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
+        return await leitor.ReadAsync(cancelamento)
+            ? new EntregaRegistrada(leitor.GetString(0), leitor.GetString(1), leitor.GetString(2), TextoOuNulo(leitor, 3))
+            : null;
+    }
+
+    public async Task<DateTimeOffset?> ObterEntregaPendenteMaisAntigaAsync(CancellationToken cancelamento)
+    {
+        await using var conexao = await AbrirAsync(cancelamento);
+        var valor = await EscalarAsync(
+            conexao, "SELECT MIN(registrada_em) FROM entrega WHERE estado = 'NaoEntregue';", cancelamento);
+        return valor is string texto ? LerData(texto) : null;
+    }
 
     public async Task<IReadOnlyList<EntregaPendente>> ListarEntregasPendentesAsync(CancellationToken cancelamento)
     {

@@ -1,0 +1,28 @@
+/speckit-specify
+
+Ajustes e correções InativacaoUsuarioInter
+    1 - Renomear no projeto o nome das pastas acessadas abaixo de: SharePointFolder:FolderPathInter e SharePointFolder:FolderPathCondominio
+        Onde se lê "Imput" passar a usar "Input"
+        Onde se lê "Auditoria" passar a usar "Logs"
+        Onde se lê "Processado" passar a usar "Processed"
+        Onde se lê "Falhas" passar a usar "Fail"
+    2 - Criar as pastas caso não existam 
+
+Rever a sequência de armazenamento e movimentação dos arquivos (Instância Inter):
+    1 - Lêr o diretório SharePointFolder:FolderPathInter/Input e importar e processar os arquivos
+    2 - Se forem processados com sucesso, mover o arquivo para SharePointFolder:FolderPathCondominio/Input 
+        - Se houver erro e não for possível mover para esta pasta, então mover para: SharePointFolder:FolderPathInter/Output e continuar tentando até conseguir mover este arquivo para  SharePointFolder:FolderPathCondominio/Input
+        - Uma vez que o arquivo foi copiado com sucesso, remover da pasta SharePointFolder:FolderPathInter/Output
+    3 - Fazer também uma cópia do arquivo processado com sucesso para SharePointFolder:FolderPathInter/Processed
+    4 - Se algum registro falhar com falha definitiva, criar um arquivo em SharePointFolder:FolderPathInter/Fail com o mesmo nome do arquivo original, porém ele deve conter apenas os registros que falharam.
+
+Rever a sequência de armazenamento e movimentação dos arquivos (Instância Condominio):
+    1 - Lêr o diretório SharePointFolder:FolderPathCondominio/Input e importar e processar os arquivos
+    2 - Se forem processados com sucesso fazer mover para SharePointFolder:FolderPathCondominio/Processed
+    3 - Se algum registro falhar com falha definitiva, criar um arquivo em SharePointFolder:FolderPathCondominio/Fail com o mesmo nome do arquivo original, porém ele deve conter apenas os registros que falharam.
+
+
+Update do registro na tabela CHMain do Banco WAccess
+    O update que hoje atualiza apenas a flag CHState=1, deve atualizar também CHDownloadRequired=1
+
+Nota: coloquei um arquivo para teste na pasta: SharePointFolder:FolderPathInter/Input 

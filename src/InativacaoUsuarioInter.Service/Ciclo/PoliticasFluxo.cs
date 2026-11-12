@@ -1,3 +1,4 @@
+using InativacaoUsuarioInter.Service.Arquivos;
 using InativacaoUsuarioInter.Service.Configuracao;
 using InativacaoUsuarioInter.Service.Entrada.Modelos;
 
@@ -10,23 +11,30 @@ public interface IPoliticaFluxo
 
     string Raiz { get; }
 
-    /// <summary>Nome da pasta de concluídos: <c>Output</c> (Inter) ou <c>Processados</c> (Condomínio).</summary>
+    /// <summary>Nome da pasta de concluídos (histórico): <c>Processed</c> nas duas instâncias (feature 002).</summary>
     string NomeConcluidos { get; }
 
     bool Replica { get; }
 
+    /// <summary>Pastas da própria raiz criadas a cada ciclo (FR-002); falha ao criá-las interrompe o ciclo.</summary>
     IReadOnlyList<string> PastasObrigatorias { get; }
 
-    string PastaEntrada => Path.Combine(Raiz, "Imput");
+    string PastaEntrada => Path.Combine(Raiz, NomesPastas.Input);
 
     string PastaConcluidos => Path.Combine(Raiz, NomeConcluidos);
 
-    string PastaFalhas => Path.Combine(Raiz, "Falhas");
+    /// <summary>Fila de saída <c>Output</c> (somente Inter, research R-03); <c>null</c> no Condomínio.</summary>
+    string? PastaSaida { get; }
 
-    string PastaAuditoria => Path.Combine(Raiz, "Auditoria");
+    string PastaFail => Path.Combine(Raiz, NomesPastas.Fail);
+
+    string PastaLogs => Path.Combine(Raiz, NomesPastas.Logs);
 }
 
-/// <summary>Instância Inter: raiz <c>FolderPathInter</c>, concluídos em <c>Output</c>, replica ao Condomínio.</summary>
+/// <summary>
+/// Instância Inter: raiz <c>FolderPathInter</c>, histórico em <c>Processed</c>, fila de saída em <c>Output</c>
+/// e entrega ao Condomínio (feature 002, FR-006–FR-011).
+/// </summary>
 internal sealed class PoliticaFluxoInter(ConfiguracaoServico configuracao) : IPoliticaFluxo
 {
     public Instancia Instancia => Instancia.Inter;
@@ -34,23 +42,32 @@ internal sealed class PoliticaFluxoInter(ConfiguracaoServico configuracao) : IPo
     public string Raiz { get; } = configuracao.RaizInter
         ?? throw new InvalidOperationException("SharePointFolder:FolderPathInter ausente.");
 
-    public string NomeConcluidos => "Output";
+    public string NomeConcluidos => NomesPastas.Processed;
 
     public bool Replica => true;
 
-    public IReadOnlyList<string> PastasObrigatorias { get; } = ["Imput", "Output", "Auditoria", "Falhas"];
+    public string? PastaSaida => Path.Combine(Raiz, NomesPastas.Output);
+
+    public IReadOnlyList<string> PastasObrigatorias { get; } =
+        [NomesPastas.Input, NomesPastas.Output, NomesPastas.Processed, NomesPastas.Logs, NomesPastas.Fail];
 }
 
-/// <summary>Instância Condomínio: raiz <c>FolderPathCondominio</c>, concluídos em <c>Processados</c>, sem replicação (FR-036).</summary>
+/// <summary>
+/// Instância Condomínio: raiz <c>FolderPathCondominio</c>, concluídos em <c>Processed</c>, falhas em
+/// <c>{FolderPathCondominio}/Fail</c>; sem fila de saída nem replicação (FR-012, FR-013).
+/// </summary>
 internal sealed class PoliticaFluxoCondominio(ConfiguracaoServico configuracao) : IPoliticaFluxo
 {
     public Instancia Instancia => Instancia.Condominio;
 
     public string Raiz { get; } = configuracao.RaizCondominio;
 
-    public string NomeConcluidos => "Processados";
+    public string NomeConcluidos => NomesPastas.Processed;
 
     public bool Replica => false;
 
-    public IReadOnlyList<string> PastasObrigatorias { get; } = ["Imput", "Processados", "Auditoria", "Falhas"];
+    public string? PastaSaida => null;
+
+    public IReadOnlyList<string> PastasObrigatorias { get; } =
+        [NomesPastas.Input, NomesPastas.Processed, NomesPastas.Logs, NomesPastas.Fail];
 }

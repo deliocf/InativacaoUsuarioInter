@@ -16,9 +16,13 @@ public sealed class PartesTests
     public void Nome_da_parte_usa_base_raiz_tipo_e_hash_curto()
     {
         Assert.Equal("20261111103000__sucesso-1a2b3c4d.json", NomeadorPartes.Parte("20261111103000", NomeadorPartes.Sucesso, Hash, ".json"));
-        Assert.Equal("20261111103000__falhas-1a2b3c4d.txt", NomeadorPartes.Parte("20261111103000", NomeadorPartes.Falhas, Hash, ".txt"));
         Assert.Equal("20261111103000__pendente-1a2b3c4d.json", NomeadorPartes.Parte("20261111103000", NomeadorPartes.Pendente, Hash, ".json"));
     }
+
+    [Fact]
+    public void Arquivo_de_falhas_usa_o_nome_do_original_feature_002() =>
+        // FR-010 / research R-05: a base raiz já é a do original, mesmo quando a origem é uma parte __pendente-.
+        Assert.Equal("20261111103000.txt", NomeadorPartes.ArquivoFalhas("20261111103000", ".txt"));
 
     [Fact]
     public void Colisao_gera_base_com_hash_curto() =>

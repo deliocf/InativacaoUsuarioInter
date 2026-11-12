@@ -5,16 +5,18 @@ using System.Text.Json;
 using InativacaoUsuarioInter.Service.Ciclo;
 using InativacaoUsuarioInter.Service.Estado;
 using InativacaoUsuarioInter.Tests.Comum;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InativacaoUsuarioInter.Tests.Integration.Replicacao;
 
-/// <summary>T074 — replicação Inter → Condomínio (US4, CA-09, CA-10, SC-005, FR-032–FR-035, análises M2/N2).</summary>
+/// <summary>
+/// T074 + feature 002 T022 — entrega Inter → Condomínio com fila Output (FR-002a, FR-004a, FR-006–FR-011, SC-004,
+/// contracts/replicacao.md v2, análise N2).
+/// </summary>
 public sealed class ReplicacaoTests(SqlServerFixture sql)
 {
     private static string[] Entregues(AmbienteTeste ambiente) =>
-        ambiente.Arquivos("Imput", ambiente.RaizCondominio).Where(a => !a.EndsWith(".traceparent", StringComparison.Ordinal)).ToArray();
+        ambiente.Arquivos("Input", ambiente.RaizCondominio).Where(a => !a.EndsWith(".traceparent", StringComparison.Ordinal)).ToArray();
 
     private static async Task<Cenario> CriarAsync(SqlServerFixture sql, Action<IServiceCollection>? servicos = null, Func<BancoTeste, string>? conexao = null)
     {
@@ -40,11 +42,13 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        var pendente = Assert.Single(cenario.Ambiente.Arquivos("Imput"));
+        var pendente = Assert.Single(cenario.Ambiente.Arquivos("Input"));
         Assert.Contains("__pendente-", pendente, StringComparison.Ordinal);
-        var sucesso = Assert.Single(cenario.Ambiente.Arquivos("Output"));
+        var sucesso = Assert.Single(cenario.Ambiente.Arquivos("Processed"));
+        Assert.Contains("__sucesso-", sucesso, StringComparison.Ordinal);
         Assert.Equal([sucesso], Entregues(cenario.Ambiente));
-        Assert.Equal("22222222222,1,Maria\r\n", await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Imput", sucesso), ct));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal("22222222222,1,Maria\r\n", await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Input", sucesso), ct));
     }
 
     [Fact]
@@ -52,7 +56,7 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await CriarAsync(sql);
-        var destino = cenario.Ambiente.PastaCondominio("Imput");
+        var destino = cenario.Ambiente.PastaCondominio("Input");
         Directory.CreateDirectory(destino);
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
 
@@ -61,6 +65,8 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
         {
             await cenario.CicloAsync(ct);
 
+            Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+            Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
             Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
             Assert.Empty(Entregues(cenario.Ambiente));
             Assert.Equal(1, await cenario.Obter<IArmazenamentoEstado>().ContarEntregasPendentesAsync(ct));
@@ -80,7 +86,8 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         Assert.Equal(["a.txt"], Entregues(cenario.Ambiente));
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
         Assert.Equal(0, await cenario.Obter<IArmazenamentoEstado>().ContarEntregasPendentesAsync(ct));
     }
 
@@ -91,7 +98,7 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
         await using var cenario = await CriarAsync(sql);
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         await cenario.CicloAsync(ct);
-        var copiado = File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Imput", "a.txt"));
+        var copiado = File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt"));
 
         for (var i = 0; i < 100; i++)
         {
@@ -102,8 +109,9 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         Assert.Equal(["a.txt"], Entregues(cenario.Ambiente));
-        Assert.Equal(copiado, File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Imput", "a.txt")));
-        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(copiado, File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt")));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
     }
 
     [Fact]
@@ -118,32 +126,86 @@ public sealed class ReplicacaoTests(SqlServerFixture sql)
 
         var entregue = Assert.Single(Entregues(cenario.Ambiente));
         Assert.StartsWith("misto__sucesso-", entregue, StringComparison.Ordinal);
-        Assert.Contains("invalido.json", cenario.Ambiente.Arquivos("Falhas"));
+        Assert.Contains("invalido.json", cenario.Ambiente.Arquivos("Fail"));
     }
 
     [Fact]
-    public async Task M2_arquivo_conhecido_sem_linha_de_entrega_eh_entregue_uma_vez()
+    public async Task FR004a_Output_herdado_ja_entregue_vai_para_Processed_sem_nova_copia()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await CriarAsync(sql);
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         await cenario.CicloAsync(ct);
+        var copiado = File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt"));
 
-        // Simula arquivo do período do MVP: entregue e registrado fora do diário.
-        File.Delete(cenario.Ambiente.PastaCondominio("Imput", "a.txt"));
-        File.Delete(cenario.Ambiente.PastaCondominio("Imput", "a.txt.traceparent"));
-        await using (var conexao = new SqliteConnection($"Data Source={Path.Combine(cenario.Ambiente.DiretorioEstado, "estado.db")};Pooling=False"))
-        {
-            await conexao.OpenAsync(ct);
-            await using var comando = conexao.CreateCommand();
-            comando.CommandText = "DELETE FROM entrega;";
-            await comando.ExecuteNonQueryAsync(ct);
-        }
-
+        // Versão anterior: o histórico vivia em Output (entrega já registrada) e não havia Processed.
+        File.Move(cenario.Ambiente.Pasta("Processed", "a.txt"), cenario.Ambiente.Pasta("Output", "a.txt"));
         await cenario.CicloAsync(ct);
+
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Equal(["a.txt"], Entregues(cenario.Ambiente));
+        Assert.Equal(copiado, File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt")));
+    }
+
+    [Fact]
+    public async Task FR008_copia_entregue_que_ficou_em_Output_eh_removida_sem_nova_entrega()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await CriarAsync(sql);
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
+        await cenario.CicloAsync(ct);
+        var copiado = File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt"));
+
+        // Reinício entre "Entregue" e a remoção: a cópia continua na fila e Processed tem o histórico.
+        File.Copy(cenario.Ambiente.Pasta("Processed", "a.txt"), cenario.Ambiente.Pasta("Output", "a.txt"));
+        await cenario.ReiniciarAsync();
+        await cenario.CicloAsync(ct);
+
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Equal(copiado, File.GetLastWriteTimeUtc(cenario.Ambiente.PastaCondominio("Input", "a.txt")));
+    }
+
+    [Fact]
+    public async Task FR004a_Output_herdado_nao_entregue_eh_entregue_e_movido_para_Processed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await CriarAsync(sql);
+        await File.WriteAllTextAsync(cenario.Ambiente.RaizCondominio, "destino indisponível", ct);
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
+        await cenario.CicloAsync(ct);
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Output"));
+
+        // Como na versão anterior: só a cópia em Output, sem histórico em Processed.
+        File.Delete(cenario.Ambiente.Pasta("Processed", "a.txt"));
+        File.Delete(cenario.Ambiente.RaizCondominio);
+        await Task.Delay(TimeSpan.FromSeconds(5.5), ct);
         await cenario.CicloAsync(ct);
 
         Assert.Equal(["a.txt"], Entregues(cenario.Ambiente));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Equal(1, await cenario.Banco.ContarHistoricoAsync(ct));
+    }
+
+    [Fact]
+    public async Task Entrega_pendente_sem_arquivo_na_fila_eh_recriada_a_partir_de_Processed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await CriarAsync(sql);
+        await File.WriteAllTextAsync(cenario.Ambiente.RaizCondominio, "destino indisponível", ct);
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
+        await cenario.CicloAsync(ct);
+
+        File.Delete(cenario.Ambiente.Pasta("Output", "a.txt"));
+        File.Delete(cenario.Ambiente.RaizCondominio);
+        await Task.Delay(TimeSpan.FromSeconds(5.5), ct);
+        await cenario.CicloAsync(ct);
+
+        Assert.Equal(["a.txt"], Entregues(cenario.Ambiente));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
     }
 
     [Fact]

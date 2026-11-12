@@ -98,6 +98,16 @@ public sealed record LogPendente(string Identificador, bool EhArquivo, TipoLog T
 
 public sealed record EntregaPendente(string Hash, string NomeOutput, int Tentativas);
 
+/// <summary>Estados de entrega Inter → Condomínio (tabela <c>entrega</c>).</summary>
+public static class EstadosEntrega
+{
+    public const string NaoEntregue = "NaoEntregue";
+    public const string Entregue = "Entregue";
+}
+
+/// <summary>Entrega registrada no diário (feature 002, research R-04).</summary>
+public sealed record EntregaRegistrada(string Hash, string Estado, string NomeOutput, string? NomeDestino);
+
 /// <summary>
 /// Diário durável do módulo Estado (research R-07/R-08). Apenas este módulo acessa o arquivo SQLite.
 /// </summary>
@@ -132,8 +142,11 @@ public interface IArmazenamentoEstado
 
     Task MarcarLogArquivoGravadoAsync(string hash, CancellationToken cancelamento);
 
-    /// <summary>Registra a parte gerada e, se <paramref name="registrarEntrega"/>, a entrega pendente (mesma transação).</summary>
-    Task RegistrarParteAsync(ParteGerada parte, bool registrarEntrega, CancellationToken cancelamento);
+    /// <summary>
+    /// Registra a parte gerada e, se <paramref name="nomeEntrega"/> não for nulo, a entrega pendente com esse nome
+    /// na fila <c>Output</c> (mesma transação).
+    /// </summary>
+    Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento);
 
     Task ConcluirArquivoAsync(string hash, string estado, DateTimeOffset agora, CancellationToken cancelamento);
 
@@ -156,6 +169,12 @@ public interface IArmazenamentoEstado
     Task RegistrarFalhaEntregaAsync(string hash, string categoria, CancellationToken cancelamento);
 
     Task<int> ContarEntregasPendentesAsync(CancellationToken cancelamento);
+
+    /// <summary>Entrega registrada para o hash, ou <c>null</c> (reconciliação de <c>Output</c>, research R-04).</summary>
+    Task<EntregaRegistrada?> ObterEntregaAsync(string hash, CancellationToken cancelamento);
+
+    /// <summary>Menor <c>registrada_em</c> entre as entregas <c>NaoEntregue</c> (alerta R-07), ou <c>null</c>.</summary>
+    Task<DateTimeOffset?> ObterEntregaPendenteMaisAntigaAsync(CancellationToken cancelamento);
 
     /// <summary>Hash já calculado de um arquivo de <c>Output</c> com o mesmo nome, tamanho e data de escrita (T098).</summary>
     Task<string?> ObterHashOutputAsync(string nome, long tamanho, DateTimeOffset escritoEm, CancellationToken cancelamento);

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace InativacaoUsuarioInter.Service.Entrada;
 
 /// <summary>
-/// Lista os arquivos elegíveis em <c>&lt;raiz&gt;/Imput</c> (FR-008, research R-09): somente <c>.json</c>/<c>.txt</c>;
+/// Lista os arquivos elegíveis em <c>&lt;raiz&gt;/Input</c> (FR-008, research R-09): somente <c>.json</c>/<c>.txt</c>;
 /// adia arquivos escritos há menos de <c>EstabilizacaoSegundos</c> ou que não abrem com acesso exclusivo
 /// (upload ou cópia em andamento, CA-14). Ordena por data de escrita.
 /// </summary>
@@ -25,7 +25,7 @@ internal sealed partial class DetectorElegiveis(
             cancelamento);
 
     /// <summary>
-    /// Data de escrita do arquivo <c>.json</c>/<c>.txt</c> mais antigo em <c>Imput</c>, inclusive os adiados
+    /// Data de escrita do arquivo <c>.json</c>/<c>.txt</c> mais antigo em <c>Input</c>, inclusive os adiados
     /// (instáveis ou bloqueados) — base da métrica <c>idade_arquivo_entrada_mais_antigo_s</c> (Princípio IV).
     /// </summary>
     public Task<DateTimeOffset?> ArquivoMaisAntigoAsync(OrcamentoCiclo? orcamento, CancellationToken cancelamento) =>

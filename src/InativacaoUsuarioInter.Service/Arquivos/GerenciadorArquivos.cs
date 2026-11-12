@@ -41,6 +41,9 @@ public interface IGerenciadorArquivos
 /// <summary>
 /// Implementação com escrita atômica e ordem tolerante a crash (research R-10):
 /// partes gravadas → diário → original removido. Nada é sobrescrito; destino idêntico é no-op.
+/// Feature 002 (research R-03/R-05): no Inter, o conteúdo de sucesso vai para <c>Processed</c> (histórico) e,
+/// antes do registro no diário, uma cópia vai para a fila <c>Output</c> com a entrega pendente; o arquivo de
+/// falhas usa o nome do original em <c>Fail</c>.
 /// </summary>
 internal sealed class GerenciadorArquivos(
     IPoliticaFluxo politica,
@@ -56,10 +59,12 @@ internal sealed class GerenciadorArquivos(
             Dependencias.PastaLocal,
             _ =>
             {
+                // Somente pastas da própria raiz: falha aqui interrompe o ciclo. A pasta de entrega
+                // {FolderPathCondominio}/Input é criada na entrega (FR-002a), nunca aqui.
                 foreach (var pasta in politica.PastasObrigatorias)
                 {
                     var caminho = Path.Combine(politica.Raiz, pasta);
-                    if (pasta is "Auditoria" or "Falhas")
+                    if (pasta is NomesPastas.Logs or NomesPastas.Fail)
                     {
                         // Dados pessoais (FR-038): em Unix, criadas só para o dono (0700).
                         DiretoriosRestritos.Criar(caminho);
@@ -101,8 +106,8 @@ internal sealed class GerenciadorArquivos(
             Dependencias.PastaLocal,
             async ct =>
             {
-                var destino = await DestinoLivreAsync(Path.Combine(politica.PastaFalhas, leitura.Nome), leitura.Hash, ct);
-                await estado.RegistrarParteAsync(new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Rejeitado, destino), false, ct);
+                var destino = await DestinoLivreAsync(Path.Combine(politica.PastaFail, leitura.Nome), leitura.Hash, ct);
+                await estado.RegistrarParteAsync(new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Rejeitado, destino), null, ct);
                 pontoFalha.Atingido(PontoFalha.AntesRemoverOriginal);
                 if (File.Exists(leitura.Caminho))
                 {
@@ -134,10 +139,10 @@ internal sealed class GerenciadorArquivos(
             _ =>
             {
                 // Somente temporários gerados pelo próprio serviço: nas pastas de saída e as partes
-                // __pendente- na entrada. Os .tmp de cópias do Inter no Imput do Condomínio não são tocados.
-                foreach (var pasta in new[] { politica.PastaConcluidos, politica.PastaFalhas })
+                // __pendente- na entrada. Os .tmp de cópias do Inter no Input do Condomínio não são tocados.
+                foreach (var pasta in new[] { politica.PastaConcluidos, politica.PastaFail, politica.PastaSaida })
                 {
-                    if (Directory.Exists(pasta))
+                    if (pasta is not null && Directory.Exists(pasta))
                     {
                         foreach (var tmp in Directory.EnumerateFiles(pasta, "*" + EscritorAtomico.SufixoTemporario))
                         {
@@ -168,8 +173,16 @@ internal sealed class GerenciadorArquivos(
             async ct =>
             {
                 var destino = await DestinoLivreAsync(Path.Combine(politica.PastaConcluidos, leitura.Nome), leitura.Hash, ct);
+                string? nomeSaida = null;
+                if (politica.PastaSaida is { } saida)
+                {
+                    // Cópia na fila Output antes do diário; numa retomada o original já pode estar em Processed.
+                    var origem = File.Exists(leitura.Caminho) ? leitura.Caminho : destino;
+                    nomeSaida = await CopiarParaSaidaAsync(origem, leitura.Nome, leitura.Hash, saida, ct);
+                }
+
                 await estado.RegistrarParteAsync(
-                    new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Integral, destino), politica.Replica, ct);
+                    new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Integral, destino), nomeSaida, ct);
                 pontoFalha.Atingido(PontoFalha.AposGravarPartes);
                 pontoFalha.Atingido(PontoFalha.AntesRemoverOriginal);
                 if (File.Exists(leitura.Caminho))
@@ -199,24 +212,29 @@ internal sealed class GerenciadorArquivos(
             {
                 if (grupos.Sucessos.Count > 0)
                 {
+                    var conteudo = SerializadorPartes.SerializarRegistros(formato, grupos.Sucessos);
                     destinoPrincipal = await GravarParteAsync(
-                        leitura, SerializadorPartes.SerializarRegistros(formato, grupos.Sucessos),
-                        politica.PastaConcluidos, NomeadorPartes.Sucesso, TiposParte.Sucesso, politica.Replica, extensao, ct);
+                        leitura, conteudo, politica.PastaConcluidos,
+                        h => NomeadorPartes.Parte(leitura.BaseRaiz, NomeadorPartes.Sucesso, h, extensao),
+                        TiposParte.Sucesso, politica.PastaSaida, ct);
                 }
 
                 if (grupos.Falhas.Count > 0)
                 {
+                    // Feature 002 (FR-010): mesmo nome do original; colisão com conteúdo diferente → nome único.
                     var destinoFalhas = await GravarParteAsync(
-                        leitura, SerializadorPartes.SerializarBrutos(formato, grupos.Falhas),
-                        politica.PastaFalhas, NomeadorPartes.Falhas, TiposParte.Falhas, false, extensao, ct);
+                        leitura, SerializadorPartes.SerializarBrutos(formato, grupos.Falhas), politica.PastaFail,
+                        _ => NomeadorPartes.ArquivoFalhas(leitura.BaseRaiz, extensao),
+                        TiposParte.Falhas, null, ct);
                     destinoPrincipal ??= destinoFalhas;
                 }
 
                 if (grupos.Pendentes.Count > 0)
                 {
                     await GravarParteAsync(
-                        leitura, SerializadorPartes.SerializarRegistros(formato, grupos.Pendentes),
-                        politica.PastaEntrada, NomeadorPartes.Pendente, TiposParte.Pendente, false, extensao, ct);
+                        leitura, SerializadorPartes.SerializarRegistros(formato, grupos.Pendentes), politica.PastaEntrada,
+                        h => NomeadorPartes.Parte(leitura.BaseRaiz, NomeadorPartes.Pendente, h, extensao),
+                        TiposParte.Pendente, null, ct);
                 }
 
                 pontoFalha.Atingido(PontoFalha.AposGravarPartes);
@@ -232,14 +250,40 @@ internal sealed class GerenciadorArquivos(
         return grupos.Pendentes.Count > 0 ? Finalizacao.Segregado : Finalizacao.Concluido;
     }
 
+    /// <summary>
+    /// Grava a parte em <paramref name="pasta"/> e, com <paramref name="pastaSaida"/> (Inter, parte de sucesso), também
+    /// na fila <c>Output</c>; só então registra parte + entrega no diário (mesma transação).
+    /// </summary>
     private async Task<string> GravarParteAsync(
-        ResultadoLeitura leitura, byte[] conteudo, string pasta, string sufixo, string tipo, bool entrega, string extensao, CancellationToken cancelamento)
+        ResultadoLeitura leitura, byte[] conteudo, string pasta, Func<string, string> nomear, string tipo, string? pastaSaida, CancellationToken cancelamento)
     {
         var hash = HashConteudo.Calcular(conteudo);
-        var destino = Path.Combine(pasta, NomeadorPartes.Parte(leitura.BaseRaiz, sufixo, hash, extensao));
+        var destino = await DestinoLivreAsync(Path.Combine(pasta, nomear(hash)), hash, cancelamento);
         await EscritorAtomico.GravarAsync(destino, conteudo, cancelamento);
-        await estado.RegistrarParteAsync(new ParteGerada(hash, leitura.Hash, tipo, destino), entrega, cancelamento);
+        string? nomeSaida = null;
+        if (pastaSaida is not null)
+        {
+            var naFila = await DestinoLivreAsync(Path.Combine(pastaSaida, Path.GetFileName(destino)), hash, cancelamento);
+            await EscritorAtomico.GravarAsync(naFila, conteudo, cancelamento);
+            nomeSaida = Path.GetFileName(naFila);
+        }
+
+        await estado.RegistrarParteAsync(new ParteGerada(hash, leitura.Hash, tipo, destino), nomeSaida, cancelamento);
         return destino;
+    }
+
+    /// <summary>Copia <paramref name="origem"/> para a fila <c>Output</c> (tmp + rename; mesmo hash → no-op).</summary>
+    private static async Task<string> CopiarParaSaidaAsync(string origem, string nome, string hash, string pastaSaida, CancellationToken cancelamento)
+    {
+        var naFila = await DestinoLivreAsync(Path.Combine(pastaSaida, nome), hash, cancelamento);
+        if (!File.Exists(naFila))
+        {
+            // Volume limitado (Processamento:TamanhoMaximoBytes, 1 MiB por padrão), validado na leitura.
+            var conteudo = await File.ReadAllBytesAsync(origem, cancelamento);
+            await EscritorAtomico.GravarAsync(naFila, conteudo, cancelamento);
+        }
+
+        return Path.GetFileName(naFila);
     }
 
     /// <summary>Span <c>arquivo.mover</c> (Princípio IV: toda E/S externa rastreada).</summary>
@@ -253,7 +297,7 @@ internal sealed class GerenciadorArquivos(
     }
 
     /// <summary>Destino original se livre ou idêntico; senão <c>&lt;base&gt;__&lt;h8&gt;.&lt;ext&gt;</c>.</summary>
-    private static async Task<string> DestinoLivreAsync(string destino, string hash, CancellationToken cancelamento)
+    internal static async Task<string> DestinoLivreAsync(string destino, string hash, CancellationToken cancelamento)
     {
         if (!File.Exists(destino) || await HashConteudo.CalcularArquivoAsync(destino, cancelamento) == hash)
         {

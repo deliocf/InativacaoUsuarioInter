@@ -63,6 +63,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
           CHType smallint NOT NULL DEFAULT 2,
           IdNumber varchar(50) NULL,
           CHState smallint NOT NULL DEFAULT 0,
+          CHDownloadRequired bit NULL,
           LastModifDateTime datetime NULL
         );
         CREATE INDEX IX_CHMain_CHType_IdNumber ON dbo.CHMain (CHType, IdNumber);
@@ -83,18 +84,21 @@ public sealed class BancoTeste(string stringConexao)
 
     public string Nome => new SqlConnectionStringBuilder(StringConexao).InitialCatalog;
 
-    public async Task<int> InserirUsuarioAsync(string? idNumber, short chState = 0, short chType = 2, CancellationToken cancelamento = default)
+    /// <param name="downloadRequired"><c>CHDownloadRequired</c> (<c>bit NULL</c>, como no esquema real; padrão <c>NULL</c>).</param>
+    public async Task<int> InserirUsuarioAsync(
+        string? idNumber, short chState = 0, short chType = 2, bool? downloadRequired = null, CancellationToken cancelamento = default)
     {
         await using var conexao = new SqlConnection(StringConexao);
         await conexao.OpenAsync(cancelamento);
         await using var comando = conexao.CreateCommand();
         comando.CommandText = """
-            INSERT dbo.CHMain (CHType, IdNumber, CHState, LastModifDateTime) VALUES (@t, @i, @s, '2026-01-01T00:00:00');
+            INSERT dbo.CHMain (CHType, IdNumber, CHState, CHDownloadRequired, LastModifDateTime) VALUES (@t, @i, @s, @d, '2026-01-01T00:00:00');
             SELECT CAST(SCOPE_IDENTITY() AS int);
             """;
         comando.Parameters.Add(new SqlParameter("@t", chType));
         comando.Parameters.Add(new SqlParameter("@i", System.Data.SqlDbType.VarChar, 50) { Value = (object?)idNumber ?? DBNull.Value });
         comando.Parameters.Add(new SqlParameter("@s", chState));
+        comando.Parameters.Add(new SqlParameter("@d", System.Data.SqlDbType.Bit) { Value = (object?)downloadRequired ?? DBNull.Value });
         return (int)(await comando.ExecuteScalarAsync(cancelamento))!;
     }
 
@@ -135,13 +139,31 @@ public sealed class BancoTeste(string stringConexao)
         return estados;
     }
 
+    /// <summary><c>(CHState, CHDownloadRequired)</c> de cada linha do CPF, em ordem de <c>CHID</c> (feature 002, US4).</summary>
+    public async Task<IReadOnlyList<(short Estado, bool? Download)>> ObterEstadosDownloadAsync(string cpf, CancellationToken cancelamento = default)
+    {
+        await using var conexao = new SqlConnection(StringConexao);
+        await conexao.OpenAsync(cancelamento);
+        await using var comando = conexao.CreateCommand();
+        comando.CommandText = "SELECT CHState, CHDownloadRequired FROM dbo.CHMain WHERE IdNumber = @c ORDER BY CHID;";
+        comando.Parameters.Add(new SqlParameter("@c", System.Data.SqlDbType.VarChar, 50) { Value = cpf });
+        await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
+        var linhas = new List<(short, bool?)>();
+        while (await leitor.ReadAsync(cancelamento))
+        {
+            linhas.Add((leitor.GetInt16(0), leitor.IsDBNull(1) ? null : leitor.GetBoolean(1)));
+        }
+
+        return linhas;
+    }
+
     /// <summary>Todas as linhas e colunas de <c>CHMain</c>, para comparação antes/depois (SC-002).</summary>
     public async Task<IReadOnlyDictionary<int, string>> ObterSnapshotAsync(CancellationToken cancelamento = default)
     {
         await using var conexao = new SqlConnection(StringConexao);
         await conexao.OpenAsync(cancelamento);
         await using var comando = conexao.CreateCommand();
-        comando.CommandText = "SELECT CHID, CHType, IdNumber, CHState, CONVERT(varchar(30), LastModifDateTime, 126) FROM dbo.CHMain;";
+        comando.CommandText = "SELECT CHID, CHType, IdNumber, CHState, CHDownloadRequired, CONVERT(varchar(30), LastModifDateTime, 126) FROM dbo.CHMain;";
         await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
         var linhas = new Dictionary<int, string>();
         while (await leitor.ReadAsync(cancelamento))

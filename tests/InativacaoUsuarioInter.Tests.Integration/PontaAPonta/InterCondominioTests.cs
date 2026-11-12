@@ -39,7 +39,7 @@ public sealed class InterCondominioTests(SqlServerFixture sql)
             }
 
             // Arquivo replicado precisa estar estável para o Condomínio.
-            foreach (var arquivo in Directory.GetFiles(ambiente.PastaCondominio("Imput")))
+            foreach (var arquivo in Directory.GetFiles(ambiente.PastaCondominio("Input")))
             {
                 File.SetLastWriteTimeUtc(arquivo, DateTime.UtcNow.AddHours(-1));
             }
@@ -58,14 +58,24 @@ public sealed class InterCondominioTests(SqlServerFixture sql)
         Assert.Equal([(short)1], await bancoCondominio.ObterEstadosAsync("33333333333", ct));
         Assert.Equal([(short)0], await bancoCondominio.ObterEstadosAsync("44444444444", ct));
 
-        Assert.Equal(2, ambiente.LinhasLog("Auditoria", ambiente.RaizInter).Length);
-        Assert.Single(ambiente.LinhasLog("Falhas", ambiente.RaizInter));
-        var auditoriaCondominio = ambiente.LinhasLog("Auditoria", ambiente.RaizCondominio);
+        Assert.Equal(2, ambiente.LinhasLog("Logs", ambiente.RaizInter).Length);
+        Assert.Single(ambiente.LinhasLog("Fail", ambiente.RaizInter));
+        var auditoriaCondominio = ambiente.LinhasLog("Logs", ambiente.RaizCondominio);
         Assert.Equal(2, auditoriaCondominio.Length);
         Assert.All(auditoriaCondominio, l => Assert.Contains("| Condominio |", l, StringComparison.Ordinal));
-        Assert.Empty(ambiente.LinhasLog("Falhas", ambiente.RaizCondominio));
-        Assert.Empty(ambiente.Arquivos("Imput", ambiente.RaizCondominio));
-        Assert.Single(ambiente.Arquivos("Processados", ambiente.RaizCondominio), a => a.EndsWith(".json", StringComparison.Ordinal));
+        Assert.Empty(ambiente.LinhasLog("Fail", ambiente.RaizCondominio));
+        Assert.Empty(ambiente.Arquivos("Input", ambiente.RaizCondominio));
+        Assert.Single(ambiente.Arquivos("Processed", ambiente.RaizCondominio), a => a.EndsWith(".json", StringComparison.Ordinal));
+
+        // Feature 002 (T039): no Inter, histórico em Processed, fila Output vazia e falhas com o nome original;
+        // cada instância grava as falhas na própria raiz; inativações com a marca de download.
+        Assert.Single(ambiente.Arquivos("Processed", ambiente.RaizInter), a => a.StartsWith("20261111103000__sucesso-", StringComparison.Ordinal));
+        Assert.Empty(ambiente.Arquivos("Output", ambiente.RaizInter));
+        Assert.Contains("20261111103000.json", ambiente.Arquivos("Fail", ambiente.RaizInter));
+        Assert.DoesNotContain(ambiente.Arquivos("Fail", ambiente.RaizCondominio), a => a.EndsWith(".json", StringComparison.Ordinal));
+        Assert.False(Directory.Exists(Path.Combine(ambiente.RaizCondominio, "Output")));
+        Assert.Equal([((short)1, (bool?)true)], await bancoCondominio.ObterEstadosDownloadAsync("22222222222", ct));
+        Assert.Equal([((short)1, (bool?)true)], await bancoInter.ObterEstadosDownloadAsync("33333333333", ct));
 
         telemetria.Coletar();
         var copia = Assert.Single(telemetria.Spans, s => s.DisplayName == "replicacao.copiar");

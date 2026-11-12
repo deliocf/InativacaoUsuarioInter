@@ -79,6 +79,7 @@ public static class ComposicaoServico
         servicos.AddSingleton<IRepositorioWAccess, RepositorioWAccessSql>();
         servicos.AddSingleton<IRegistroLogs, EscritorLogAppendOnly>();
         servicos.AddSingleton<IGerenciadorArquivos, GerenciadorArquivos>();
+        servicos.AddSingleton<MigradorLegado>();
         servicos.AddSingleton<ProcessadorArquivo>();
         servicos.AddSingleton<Recuperacao>();
         servicos.AddSingleton<IServicoReplicacao, ServicoReplicacao>();

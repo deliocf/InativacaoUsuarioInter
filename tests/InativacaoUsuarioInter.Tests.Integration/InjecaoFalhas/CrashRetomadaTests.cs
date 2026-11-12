@@ -24,21 +24,27 @@ public sealed class CrashRetomadaTests(SqlServerFixture sql)
 
     private static async Task VerificarAsync(AmbienteTeste ambiente, BancoTeste banco, CancellationToken ct)
     {
+        // Feature 002 (FR-014/FR-015): inclusive o já inativo (11111111111) recebe a marca de download.
         foreach (var cpf in new[] { "11111111111", "22222222222", "33333333333" })
         {
-            Assert.Equal([(short)1], await banco.ObterEstadosAsync(cpf, ct));
+            Assert.Equal([((short)1, (bool?)true)], await banco.ObterEstadosDownloadAsync(cpf, ct));
         }
 
-        var auditoria = ambiente.LinhasLog("Auditoria");
+        var auditoria = ambiente.LinhasLog("Logs");
         Assert.Equal(3, auditoria.Length);
         Assert.EndsWith("status=JA_INATIVO", Assert.Single(auditoria, l => l.Contains("cpf=11111111111", StringComparison.Ordinal)), StringComparison.Ordinal);
         Assert.EndsWith("status=INATIVADO", Assert.Single(auditoria, l => l.Contains("cpf=22222222222", StringComparison.Ordinal)), StringComparison.Ordinal);
         Assert.EndsWith("status=INATIVADO", Assert.Single(auditoria, l => l.Contains("cpf=33333333333", StringComparison.Ordinal)), StringComparison.Ordinal);
-        Assert.Empty(ambiente.LinhasLog("Falhas"));
-        Assert.Equal(["20261111103000.txt"], ambiente.Arquivos("Output"));
-        Assert.Equal(Conteudo, await File.ReadAllTextAsync(ambiente.Pasta("Output", "20261111103000.txt"), ct));
-        Assert.Empty(ambiente.Arquivos("Imput"));
-        Assert.Equal(2, await banco.ContarHistoricoAsync(ct));
+        Assert.Empty(ambiente.LinhasLog("Fail"));
+        // Feature 002 (FR-006/FR-008): histórico em Processed, entregue ao Condomínio e fila Output vazia.
+        Assert.Equal(["20261111103000.txt"], ambiente.Arquivos("Processed"));
+        Assert.Equal(Conteudo, await File.ReadAllTextAsync(ambiente.Pasta("Processed", "20261111103000.txt"), ct));
+        Assert.Empty(ambiente.Arquivos("Output"));
+        Assert.Contains("20261111103000.txt", ambiente.Arquivos("Input", ambiente.RaizCondominio));
+        Assert.Equal(Conteudo, await File.ReadAllTextAsync(ambiente.PastaCondominio("Input", "20261111103000.txt"), ct));
+        Assert.Empty(ambiente.Arquivos("Input"));
+        // 2 inativações + a marca de download do já inativo (feature 002, FR-015), cada uma exatamente uma vez.
+        Assert.Equal(3, await banco.ContarHistoricoAsync(ct));
     }
 
     [Theory]
@@ -93,7 +99,8 @@ public sealed class CrashRetomadaTests(SqlServerFixture sql)
             using var garantia = new EncerrarAoSair(segundo);
             var prazo = Stopwatch.StartNew();
             while (prazo.Elapsed < TimeSpan.FromSeconds(90)
-                   && !(ambiente.Arquivos("Imput").Length == 0 && ambiente.LinhasLog("Auditoria").Length == 3))
+                   && !(ambiente.Arquivos("Input").Length == 0 && ambiente.LinhasLog("Logs").Length == 3
+                        && ambiente.Arquivos("Output").Length == 0 && ambiente.Arquivos("Input", ambiente.RaizCondominio).Length > 0))
             {
                 await Task.Delay(500, ct);
             }

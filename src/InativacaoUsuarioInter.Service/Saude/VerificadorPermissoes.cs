@@ -7,7 +7,7 @@ using InativacaoUsuarioInter.Service.Configuracao;
 namespace InativacaoUsuarioInter.Service.Saude;
 
 /// <summary>
-/// FR-038: os logs de Auditoria/Falhas e o diário (<c>estado.db</c>) contêm CPF e nomes. Verifica se essas
+/// FR-038: os logs de <c>Logs/</c> e <c>Fail/</c> e o diário (<c>estado.db</c>) contêm CPF e nomes. Verifica se essas
 /// pastas concedem leitura a grupos amplos — Windows: Everyone, Users, Authenticated Users; Unix: "outros" —
 /// e devolve rótulos (nunca caminhos) das pastas abertas, para o alerta <c>PERMISSAO_ABERTA_DADOS_PESSOAIS</c>.
 /// </summary>
@@ -25,8 +25,8 @@ internal sealed class VerificadorPermissoes(IPoliticaFluxo politica, Configuraca
         var abertas = new List<string>();
         foreach (var (rotulo, pasta) in new[]
         {
-            ("Auditoria", politica.PastaAuditoria),
-            ("Falhas", politica.PastaFalhas),
+            ("Logs", politica.PastaLogs),
+            ("Fail", politica.PastaFail),
             ("Estado", configuracao.DiretorioEstado),
         })
         {

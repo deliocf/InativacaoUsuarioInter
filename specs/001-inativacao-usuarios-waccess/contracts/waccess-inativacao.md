@@ -1,5 +1,7 @@
 # Contrato: Inativação no WAccess (`dbo.CHMain`)
 
+> **Alterado pela feature 002** — o passo B grava também `CHDownloadRequired = 1` e roda para CPFs já inativos: ver [`specs/002-ajustes-pastas-fluxo/contracts/waccess-inativacao.md`](../../002-ajustes-pastas-fluxo/contracts/waccess-inativacao.md).
+
 **Origem**: FR-014–FR-018; documento-base §7; [research.md R-01–R-03](../research.md).
 **Teste de contrato**: `tests/InativacaoUsuarioInter.Tests.Contract/WAccess/*`, contra SQL Server em container com a réplica de `CHMain` descrita abaixo.
 

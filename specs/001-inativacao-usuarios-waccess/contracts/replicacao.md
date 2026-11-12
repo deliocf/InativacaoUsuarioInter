@@ -1,5 +1,7 @@
 # Contrato: Artefato de replicação Inter → Condomínio
 
+> **Substituído pela feature 002** — ver [`specs/002-ajustes-pastas-fluxo/contracts/replicacao.md`](../../002-ajustes-pastas-fluxo/contracts/replicacao.md): fila `Output`, histórico em `Processed`, entrega em `{FolderPathCondominio}/Input` no mesmo ciclo.
+
 **Origem**: FR-032–FR-036; [research.md R-11](../research.md).
 **Teste de contrato**: `tests/InativacaoUsuarioInter.Tests.Contract/Replicacao/*`.
 
