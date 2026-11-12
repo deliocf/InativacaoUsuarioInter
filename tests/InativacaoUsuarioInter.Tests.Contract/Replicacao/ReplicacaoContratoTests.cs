@@ -23,8 +23,9 @@ public sealed partial class ReplicacaoContratoTests(SqlServerFixture sql)
     }
 
     [Fact]
-    public async Task Copia_byte_a_byte_com_sidecar_traceparent_e_sem_temporario_visivel()
+    public async Task Copia_byte_a_byte_sem_sidecar_traceparent_e_sem_temporario_visivel()
     {
+        // Bug nome-original-sem-trace: nenhum arquivo de trace no Condomínio; o traceparent fica só no diário do Inter.
         var ct = TestContext.Current.CancellationToken;
         using var telemetria = new ColetorTelemetria();
         await using var cenario = await CriarComArquivoAsync(ct);
@@ -32,15 +33,14 @@ public sealed partial class ReplicacaoContratoTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         var destino = cenario.Ambiente.PastaCondominio("Input");
-        Assert.Equal(["20261111103000.txt", "20261111103000.txt.traceparent"], cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
         Assert.Equal(
             await File.ReadAllBytesAsync(cenario.Ambiente.Pasta("Processed", "20261111103000.txt"), ct),
             await File.ReadAllBytesAsync(Path.Combine(destino, "20261111103000.txt"), ct));
         Assert.Empty(cenario.Ambiente.Arquivos("Output"));
-        var traceparent = (await File.ReadAllTextAsync(Path.Combine(destino, "20261111103000.txt.traceparent"), ct)).Trim();
-        Assert.Matches(Traceparent(), traceparent);
-        Assert.Contains(telemetria.Spans, s => s.DisplayName == "replicacao.copiar" && traceparent.Contains(s.TraceId.ToHexString(), StringComparison.Ordinal));
+        Assert.Contains(telemetria.Spans, s => s.DisplayName == "replicacao.copiar");
         Assert.Empty(Directory.GetFiles(destino, "*.tmp"));
+        Assert.Empty(Directory.GetFiles(destino, "*.traceparent"));
     }
 
     [Fact]
@@ -60,8 +60,9 @@ public sealed partial class ReplicacaoContratoTests(SqlServerFixture sql)
     }
 
     [Fact]
-    public async Task Colisao_com_conteudo_diferente_entrega_com_nome_unico()
+    public async Task Colisao_com_conteudo_diferente_aguarda_e_entrega_com_nome_original_depois_de_consumido()
     {
+        // Bug nome-original-sem-trace: nunca renomear nem sobrescrever no Condomínio; a entrega espera na fila Output.
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await CriarComArquivoAsync(ct);
         var destino = cenario.Ambiente.PastaCondominio("Input");
@@ -69,14 +70,21 @@ public sealed partial class ReplicacaoContratoTests(SqlServerFixture sql)
         await File.WriteAllTextAsync(Path.Combine(destino, "20261111103000.txt"), "outro conteudo", ct);
 
         await cenario.CicloAsync(ct);
+        await cenario.CicloAsync(ct);
 
-        var arquivos = cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio).Where(a => a.EndsWith(".txt", StringComparison.Ordinal)).ToArray();
-        Assert.Equal(2, arquivos.Length);
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
         Assert.Equal("outro conteudo", await File.ReadAllTextAsync(Path.Combine(destino, "20261111103000.txt"), ct));
-        var entregue = Assert.Single(arquivos, a => a != "20261111103000.txt");
-        Assert.Matches(@"^20261111103000__[0-9a-f]{8}\.txt$", entregue);
-        Assert.Equal(Conteudo, await File.ReadAllTextAsync(Path.Combine(destino, entregue), ct));
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(1, await cenario.Obter<Service.Estado.IArmazenamentoEstado>().ContarEntregasPendentesAsync(ct));
+
+        // O Condomínio consumiu o arquivo anterior: a entrega sai com o nome original.
+        File.Delete(Path.Combine(destino, "20261111103000.txt"));
+        await cenario.CicloAsync(ct);
+
+        Assert.Equal(["20261111103000.txt"], cenario.Ambiente.Arquivos("Input", cenario.Ambiente.RaizCondominio));
+        Assert.Equal(Conteudo, await File.ReadAllTextAsync(Path.Combine(destino, "20261111103000.txt"), ct));
         Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+        Assert.Equal(0, await cenario.Obter<Service.Estado.IArmazenamentoEstado>().ContarEntregasPendentesAsync(ct));
     }
 
     [Fact]

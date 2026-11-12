@@ -7,12 +7,17 @@ using InativacaoUsuarioInter.Service.Registros;
 
 namespace InativacaoUsuarioInter.Service.Entrada;
 
-/// <summary>Resultado da leitura de um arquivo: aceito (<see cref="Arquivo"/>) ou rejeitado (<see cref="CausaRejeicao"/>).</summary>
+/// <summary>
+/// Resultado da leitura de um arquivo: aceito (<see cref="Arquivo"/>) ou rejeitado (<see cref="CausaRejeicao"/>).
+/// <see cref="Hash"/> é a identidade do arquivo no diário (nome + conteúdo, <see cref="HashConteudo.ChaveArquivo"/>);
+/// <see cref="HashDoConteudo"/> é o SHA-256 dos bytes, usado para comparar arquivos em disco e identificar partes.
+/// </summary>
 public sealed record ResultadoLeitura(
     string Caminho,
     string Nome,
     FormatoArquivo Formato,
     string Hash,
+    string HashDoConteudo,
     string HashRaiz,
     string BaseRaiz,
     bool EhParteConhecida,
@@ -51,8 +56,9 @@ internal sealed class LeitorArquivo(IArmazenamentoEstado estado, ConfiguracaoSer
         }
 
         var bytes = await File.ReadAllBytesAsync(caminho, cancelamento);
-        var hash = HashConteudo.Calcular(bytes);
-        var origem = await estado.ResolverHashRaizAsync(hash, cancelamento);
+        var conteudo = HashConteudo.Calcular(bytes);
+        var hash = await estado.ResolverChaveArquivoAsync(nome, conteudo, cancelamento);
+        var origem = await estado.ResolverHashRaizAsync(conteudo, cancelamento);
         var hashRaiz = origem?.HashRaiz ?? hash;
         var baseRaiz = origem?.BaseRaiz ?? Path.GetFileNameWithoutExtension(nome);
 
@@ -64,35 +70,36 @@ internal sealed class LeitorArquivo(IArmazenamentoEstado estado, ConfiguracaoSer
         }
         catch (DecoderFallbackException)
         {
-            return Rejeicao(caminho, nome, formato, hash, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoInvalido);
+            return Rejeicao(caminho, nome, formato, hash, conteudo, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoInvalido);
         }
 
         var parse = formato == FormatoArquivo.Json ? ParserJson.Interpretar(texto) : ParserTxt.Interpretar(texto);
         if (!parse.Valido || parse.Registros.Count == 0)
         {
-            return Rejeicao(caminho, nome, formato, hash, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoInvalido);
+            return Rejeicao(caminho, nome, formato, hash, conteudo, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoInvalido);
         }
 
         if (parse.Registros.Count > limite.MaximoRegistros)
         {
-            return Rejeicao(caminho, nome, formato, hash, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoExcedeLimite);
+            return Rejeicao(caminho, nome, formato, hash, conteudo, hashRaiz, baseRaiz, origem is not null, CausasFalha.ArquivoExcedeLimite);
         }
 
         var registros = ValidadorRegistro.Validar(parse.Registros, configuracao.Instancia, hashRaiz);
         var arquivo = new ArquivoEntrada(caminho, nome, formato, hash, hashRaiz, baseRaiz, tamanho, registros);
-        return new ResultadoLeitura(caminho, nome, formato, hash, hashRaiz, baseRaiz, origem is not null, arquivo, null);
+        return new ResultadoLeitura(caminho, nome, formato, hash, conteudo, hashRaiz, baseRaiz, origem is not null, arquivo, null);
     }
 
     private async Task<ResultadoLeitura> RejeitarAsync(
-        string caminho, string nome, FormatoArquivo formato, string hash, string causa, CancellationToken cancelamento)
+        string caminho, string nome, FormatoArquivo formato, string conteudo, string causa, CancellationToken cancelamento)
     {
-        var origem = await estado.ResolverHashRaizAsync(hash, cancelamento);
+        var hash = await estado.ResolverChaveArquivoAsync(nome, conteudo, cancelamento);
+        var origem = await estado.ResolverHashRaizAsync(conteudo, cancelamento);
         return Rejeicao(
-            caminho, nome, formato, hash, origem?.HashRaiz ?? hash,
+            caminho, nome, formato, hash, conteudo, origem?.HashRaiz ?? hash,
             origem?.BaseRaiz ?? Path.GetFileNameWithoutExtension(nome), origem is not null, causa);
     }
 
     private static ResultadoLeitura Rejeicao(
-        string caminho, string nome, FormatoArquivo formato, string hash, string hashRaiz, string baseRaiz, bool parte, string causa) =>
-        new(caminho, nome, formato, hash, hashRaiz, baseRaiz, parte, null, causa);
+        string caminho, string nome, FormatoArquivo formato, string hash, string conteudo, string hashRaiz, string baseRaiz, bool parte, string causa) =>
+        new(caminho, nome, formato, hash, conteudo, hashRaiz, baseRaiz, parte, null, causa);
 }

@@ -18,9 +18,11 @@ public interface IServicoReplicacao
 /// <summary>
 /// Esvazia a fila <c>{FolderPathInter}/Output</c>: reconcilia os arquivos da fila com o diário pelo hash
 /// (research R-04) e entrega cada pendente em <c>{FolderPathCondominio}/Input</c> com visibilidade atômica
-/// (<c>.tmp</c> → hash conferido → sidecar <c>.traceparent</c> → rename → <c>Entregue</c> durável). Depois de
-/// <c>Entregue</c>, o arquivo sai de <c>Output</c> (ou vai para <c>Processed</c>, se lá não houver cópia — herdado da
-/// versão anterior, FR-004a). Falha do destino é transitória: o arquivo fica na fila para o próximo ciclo (FR-002a).
+/// (<c>.tmp</c> → hash conferido → rename → <c>Entregue</c> durável), sempre com o nome original e sem arquivo
+/// <c>.traceparent</c> (bug nome-original-sem-trace). Se o Condomínio ainda tiver um arquivo com esse nome e outro
+/// conteúdo, a entrega espera na fila. Depois de <c>Entregue</c>, o arquivo sai de <c>Output</c> (ou vai para
+/// <c>Processed</c>, se for herdado da versão anterior, FR-004a). Falha do destino é transitória: o arquivo fica na
+/// fila para o próximo ciclo (FR-002a).
 /// </summary>
 internal sealed partial class ServicoReplicacao(
     ConfiguracaoServico configuracao,
@@ -34,6 +36,9 @@ internal sealed partial class ServicoReplicacao(
 {
     /// <summary>Quantos hashes de <c>Output</c> foram calculados na última reconciliação (os demais vieram do cache, T098).</summary>
     public int HashesCalculadosNoUltimoCiclo { get; private set; }
+
+    /// <summary>Motivo gravado em <c>entrega.ultima_falha</c> quando o nome ainda está ocupado no Condomínio.</summary>
+    public const string DestinoOcupado = "DestinoOcupado";
 
     public async Task EntregarPendentesAsync(CancellationToken cancelamento)
     {
@@ -75,12 +80,23 @@ internal sealed partial class ServicoReplicacao(
             atividade?.SetTag(Instrumentacao.Atributos.Tentativa, entrega.Tentativas + 1);
             try
             {
-                var (nomeDestino, traceparent) = await pipelines.ExecutarAsync(
+                var (ocupado, nomeDestino, traceparent) = await pipelines.ExecutarAsync(
                     Dependencias.Replicacao,
-                    ct => new ValueTask<(string, string?)>(CopiarAsync(origem, entrega, ct)),
+                    ct => new ValueTask<ResultadoCopia>(CopiarAsync(origem, entrega, ct)),
                     orcamento,
                     cancelamento);
-                await estado.RegistrarEntregaAsync(entrega.Hash, nomeDestino, traceparent, relogio.GetUtcNow(), cancelamento);
+                if (ocupado)
+                {
+                    // O Condomínio ainda não consumiu o arquivo anterior com o mesmo nome: não renomeia nem sobrescreve,
+                    // tenta de novo no próximo ciclo. Não é indisponibilidade do destino (as demais entregas seguem).
+                    await estado.RegistrarFalhaEntregaAsync(entrega.Hash, entrega.NomeOutput, DestinoOcupado, cancelamento);
+                    atividade?.SetTag(Instrumentacao.Atributos.Resultado, "transitoria");
+                    atividade?.SetTag(Instrumentacao.Atributos.StatusDetalhado, DestinoOcupado);
+                    LogDestinoOcupado(logger, entrega.NomeOutput, nomeDestino);
+                    continue;
+                }
+
+                await estado.RegistrarEntregaAsync(entrega.Hash, entrega.NomeOutput, nomeDestino, traceparent, relogio.GetUtcNow(), cancelamento);
                 atividade?.SetTag(Instrumentacao.Atributos.Resultado, "sucesso");
                 LogEntregue(logger, entrega.NomeOutput, nomeDestino);
             }
@@ -88,7 +104,7 @@ internal sealed partial class ServicoReplicacao(
             {
                 var erro = pipelines.Classificar(Dependencias.Replicacao, excecao);
                 dependencias.MarcarIndisponivel(Dependencias.Replicacao, erro, relogio.GetUtcNow());
-                await estado.RegistrarFalhaEntregaAsync(entrega.Hash, erro.Categoria.ToString(), cancelamento);
+                await estado.RegistrarFalhaEntregaAsync(entrega.Hash, entrega.NomeOutput, erro.Categoria.ToString(), cancelamento);
                 atividade?.SetTag(Instrumentacao.Atributos.Resultado, "transitoria");
                 LogFalhaEntrega(logger, entrega.NomeOutput, erro.Categoria);
                 continue;
@@ -136,8 +152,11 @@ internal sealed partial class ServicoReplicacao(
             }
 
             // Já entregue (reinício entre "Entregue" e a remoção, ou histórico da versão anterior): só limpa a fila.
-            if (await estado.ObterEntregaAsync(hash, cancelamento) is { Estado: EstadosEntrega.Entregue })
+            // A entrega é do arquivo da fila (nome + conteúdo): o mesmo conteúdo vindo de outra origem tem outro nome
+            // e é entregue de novo (bug ja-inativo-sem-replicacao).
+            if (await estado.ObterEntregaAsync(hash, info.Name, cancelamento) is { Estado: EstadosEntrega.Entregue } entregue)
             {
+                LogJaEntregue(logger, info.Name, entregue.NomeDestino);
                 await LimparSaidaAsync(caminho, hash, cancelamento);
                 continue;
             }
@@ -174,25 +193,41 @@ internal sealed partial class ServicoReplicacao(
         atividade?.SetTag(Instrumentacao.Atributos.ChaveIdempotencia, hash);
         var noHistorico = Path.Combine(politica.PastaConcluidos, nome);
         var colisao = Path.Combine(politica.PastaConcluidos, NomeadorPartes.Colisao(nome, hash));
-        if (await MesmoConteudoAsync(noHistorico, hash, cancelamento) || await MesmoConteudoAsync(colisao, hash, cancelamento))
+        if (await MesmoConteudoAsync(noHistorico, hash, cancelamento)
+            || await MesmoConteudoAsync(colisao, hash, cancelamento)
+            || await HistoricoGravadoAsync(hash, cancelamento))
         {
+            // O histórico já está em Processed (possivelmente mesclado com outra parte do mesmo original).
             File.Delete(caminho);
             ExcluirSeExistir(caminho + GerenciadorArquivos.SufixoTraceparent);
             atividade?.SetTag(Instrumentacao.Atributos.StatusDetalhado, "removido");
             return;
         }
 
-        var destino = await GerenciadorArquivos.DestinoLivreAsync(noHistorico, hash, cancelamento);
-        var sidecar = caminho + GerenciadorArquivos.SufixoTraceparent;
-        if (File.Exists(sidecar) && !File.Exists(destino + GerenciadorArquivos.SufixoTraceparent))
-        {
-            File.Move(sidecar, destino + GerenciadorArquivos.SufixoTraceparent, overwrite: false);
-        }
-
-        await EscritorAtomico.MoverAsync(caminho, destino, cancelamento);
-        ExcluirSeExistir(sidecar);
+        // Herdado da versão anterior (histórico vivia em Output): vai para Processed com o nome original; colisão → mescla.
+        ExcluirSeExistir(caminho + GerenciadorArquivos.SufixoTraceparent);
+        await MescladorHistorico.MoverAsync(caminho, noHistorico, cancelamento);
         atividade?.SetTag(Instrumentacao.Atributos.StatusDetalhado, "movido_para_processed");
         LogHerdadoMovido(logger, nome);
+    }
+
+    /// <summary>
+    /// A parte foi gerada pelo serviço e o seu histórico existe fora de <c>Output</c> (em <c>Processed</c>, com o nome
+    /// original, possivelmente mesclado com outra parte do mesmo original). Partes herdadas da versão anterior tinham
+    /// <c>caminho_final</c> na própria fila; histórico ausente também cai no caminho de mover para <c>Processed</c>.
+    /// </summary>
+    private async Task<bool> HistoricoGravadoAsync(string hash, CancellationToken cancelamento)
+    {
+        if (await estado.ObterParteAsync(hash, cancelamento) is not { Tipo: TiposParte.Integral or TiposParte.Sucesso } parte
+            || politica.PastaSaida is not { } saida
+            || !File.Exists(parte.CaminhoFinal))
+        {
+            return false;
+        }
+
+        var pasta = Path.GetDirectoryName(Path.GetFullPath(parte.CaminhoFinal));
+        return !string.Equals(
+            pasta?.TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(saida).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Entrega pendente sem o arquivo na fila: recria a cópia a partir de <c>Processed</c>, se o hash conferir.</summary>
@@ -223,28 +258,20 @@ internal sealed partial class ServicoReplicacao(
         }
     }
 
-    private async Task<(string NomeDestino, string? Traceparent)> CopiarAsync(
-        string origem, EntregaPendente entrega, CancellationToken cancelamento)
+    private async Task<ResultadoCopia> CopiarAsync(string origem, EntregaPendente entrega, CancellationToken cancelamento)
     {
         // Criada aqui, dentro do pipeline de replicação: indisponibilidade do Condomínio não interrompe o ciclo (FR-002a).
         var pastaDestino = Path.Combine(configuracao.RaizCondominio, NomesPastas.Input);
         Directory.CreateDirectory(pastaDestino);
 
-        var nome = entrega.NomeOutput;
+        // Nome original, nunca renomeado (bug nome-original-sem-trace). Entregas antigas não guardavam o nome de destino.
+        var nome = entrega.NomeDestino ?? entrega.NomeOutput;
         var final = Path.Combine(pastaDestino, nome);
         if (File.Exists(final))
         {
-            if (await HashConteudo.CalcularArquivoAsync(final, cancelamento) == entrega.Hash)
-            {
-                return (nome, null);
-            }
-
-            nome = NomeadorPartes.Colisao(nome, entrega.Hash);
-            final = Path.Combine(pastaDestino, nome);
-            if (File.Exists(final) && await HashConteudo.CalcularArquivoAsync(final, cancelamento) == entrega.Hash)
-            {
-                return (nome, null);
-            }
+            return await HashConteudo.CalcularArquivoAsync(final, cancelamento) == entrega.Hash
+                ? new ResultadoCopia(false, nome, null)
+                : new ResultadoCopia(true, nome, null);
         }
 
         var temporario = final + EscritorAtomico.SufixoTemporario;
@@ -268,15 +295,16 @@ internal sealed partial class ServicoReplicacao(
         }
 
         pontoFalha.Atingido(PontoFalha.AposCopiaTemporaria);
-        var traceparent = Activity.Current?.IdFormat == ActivityIdFormat.W3C ? Activity.Current.Id : null;
-        if (traceparent is not null)
-        {
-            await File.WriteAllTextAsync(final + GerenciadorArquivos.SufixoTraceparent, traceparent, cancelamento);
-        }
 
+        // Sem sidecar .traceparent no Condomínio (bug nome-original-sem-trace, constituição v2.0.0, Princípio IV): o
+        // contexto fica só no diário do Inter (entrega.traceparent); o Condomínio abre uma raiz de trace própria.
+        var traceparent = Activity.Current?.IdFormat == ActivityIdFormat.W3C ? Activity.Current.Id : null;
         File.Move(temporario, final, overwrite: false);
-        return (nome, traceparent);
+        return new ResultadoCopia(false, nome, traceparent);
     }
+
+    /// <summary>Resultado da cópia: <paramref name="Ocupado"/> = o Condomínio já tem outro conteúdo com esse nome.</summary>
+    private readonly record struct ResultadoCopia(bool Ocupado, string NomeDestino, string? Traceparent);
 
     private static async Task<bool> MesmoConteudoAsync(string caminho, string hash, CancellationToken cancelamento) =>
         File.Exists(caminho) && string.Equals(await HashConteudo.CalcularArquivoAsync(caminho, cancelamento), hash, StringComparison.Ordinal);
@@ -292,6 +320,9 @@ internal sealed partial class ServicoReplicacao(
     [LoggerMessage(Level = LogLevel.Information, Message = "Entregue {Arquivo} ao Condomínio como {Destino}.")]
     private static partial void LogEntregue(ILogger logger, string arquivo, string destino);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Entrega de {Arquivo} aguarda: o Condomínio ainda tem outro arquivo {Destino}; permanece em Output, nova tentativa no próximo ciclo.")]
+    private static partial void LogDestinoOcupado(ILogger logger, string arquivo, string destino);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Falha ao entregar {Arquivo} ({Categoria}); permanece em Output, nova tentativa no próximo ciclo.")]
     private static partial void LogFalhaEntrega(ILogger logger, string arquivo, CategoriaErro categoria);
 
@@ -300,6 +331,9 @@ internal sealed partial class ServicoReplicacao(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Entrega pendente de {Arquivo} sem origem em Output nem em Processed; ignorada.")]
     private static partial void LogOrigemAusente(ILogger logger, string arquivo);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Arquivo {Arquivo} em Output já foi entregue ao Condomínio como {Destino}; sai da fila sem nova cópia.")]
+    private static partial void LogJaEntregue(ILogger logger, string arquivo, string? destino);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Arquivo {Arquivo} já entregue foi movido de Output para Processed (histórico da versão anterior).")]
     private static partial void LogHerdadoMovido(ILogger logger, string arquivo);

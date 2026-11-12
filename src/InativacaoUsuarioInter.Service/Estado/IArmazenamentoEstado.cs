@@ -96,7 +96,11 @@ public sealed record OrigemArquivo(string HashRaiz, string BaseRaiz);
 
 public sealed record LogPendente(string Identificador, bool EhArquivo, TipoLog Tipo, string Linha);
 
-public sealed record EntregaPendente(string Hash, string NomeOutput, int Tentativas);
+/// <summary>
+/// Entrega pendente: <paramref name="NomeOutput"/> é o arquivo na fila <c>Output</c>; <paramref name="NomeDestino"/> é o
+/// nome com que ele deve aparecer no Condomínio (o nome original; <c>null</c> em entregas antigas = <c>NomeOutput</c>).
+/// </summary>
+public sealed record EntregaPendente(string Hash, string NomeOutput, int Tentativas, string? NomeDestino = null);
 
 /// <summary>Estados de entrega Inter → Condomínio (tabela <c>entrega</c>).</summary>
 public static class EstadosEntrega
@@ -117,10 +121,21 @@ public interface IArmazenamentoEstado
 
     Task<EstadoArquivo?> ObterArquivoAsync(string hash, CancellationToken cancelamento);
 
+    /// <summary>
+    /// Parte com o conteúdo <paramref name="hash"/>. Se arquivos de origem diferentes geraram o mesmo conteúdo, prefere
+    /// uma parte entregável (<c>Integral</c>/<c>Sucesso</c>) e, entre elas, a mais recente.
+    /// </summary>
     Task<ParteGerada?> ObterParteAsync(string hash, CancellationToken cancelamento);
 
     /// <summary>Se <paramref name="hash"/> é uma parte <c>__pendente-</c> conhecida, devolve a origem (hash raiz e base raiz).</summary>
     Task<OrigemArquivo?> ResolverHashRaizAsync(string hash, CancellationToken cancelamento);
+
+    /// <summary>
+    /// Identidade do arquivo <paramref name="nome"/> com conteúdo <paramref name="hashConteudo"/> no diário:
+    /// <see cref="Arquivos.HashConteudo.ChaveArquivo"/>, ou o próprio hash do conteúdo se o diário já tem esse arquivo
+    /// (mesmo nome e conteúdo) registrado pela versão anterior, que usava só o conteúdo como identidade.
+    /// </summary>
+    Task<string> ResolverChaveArquivoAsync(string nome, string hashConteudo, CancellationToken cancelamento);
 
     /// <summary>Registra o arquivo (se novo) e seus registros (os já existentes passam a apontar para este arquivo).</summary>
     Task RegistrarArquivoAsync(EstadoArquivo arquivo, IReadOnlyCollection<NovoRegistro> registros, CancellationToken cancelamento);
@@ -146,7 +161,8 @@ public interface IArmazenamentoEstado
     /// Registra a parte gerada e, se <paramref name="nomeEntrega"/> não for nulo, a entrega pendente com esse nome
     /// na fila <c>Output</c> (mesma transação).
     /// </summary>
-    Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento);
+    /// <remarks><paramref name="nomeDestino"/>: nome com que a entrega deve aparecer no Condomínio (padrão: <paramref name="nomeEntrega"/>).</remarks>
+    Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento, string? nomeDestino = null);
 
     Task ConcluirArquivoAsync(string hash, string estado, DateTimeOffset agora, CancellationToken cancelamento);
 
@@ -164,14 +180,17 @@ public interface IArmazenamentoEstado
 
     Task<IReadOnlyList<EntregaPendente>> ListarEntregasPendentesAsync(CancellationToken cancelamento);
 
-    Task RegistrarEntregaAsync(string hash, string nomeDestino, string? traceparent, DateTimeOffset agora, CancellationToken cancelamento);
+    Task RegistrarEntregaAsync(string hash, string nomeOutput, string nomeDestino, string? traceparent, DateTimeOffset agora, CancellationToken cancelamento);
 
-    Task RegistrarFalhaEntregaAsync(string hash, string categoria, CancellationToken cancelamento);
+    Task RegistrarFalhaEntregaAsync(string hash, string nomeOutput, string categoria, CancellationToken cancelamento);
 
     Task<int> ContarEntregasPendentesAsync(CancellationToken cancelamento);
 
-    /// <summary>Entrega registrada para o hash, ou <c>null</c> (reconciliação de <c>Output</c>, research R-04).</summary>
-    Task<EntregaRegistrada?> ObterEntregaAsync(string hash, CancellationToken cancelamento);
+    /// <summary>
+    /// Entrega registrada para o arquivo <paramref name="nomeOutput"/> da fila com conteúdo <paramref name="hash"/>, ou
+    /// <c>null</c> (reconciliação de <c>Output</c>, research R-04). O mesmo conteúdo com outro nome é outra entrega.
+    /// </summary>
+    Task<EntregaRegistrada?> ObterEntregaAsync(string hash, string nomeOutput, CancellationToken cancelamento);
 
     /// <summary>Menor <c>registrada_em</c> entre as entregas <c>NaoEntregue</c> (alerta R-07), ou <c>null</c>.</summary>
     Task<DateTimeOffset?> ObterEntregaPendenteMaisAntigaAsync(CancellationToken cancelamento);

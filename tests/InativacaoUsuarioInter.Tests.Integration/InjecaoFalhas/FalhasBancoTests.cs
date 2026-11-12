@@ -81,7 +81,7 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
         await cenario.CicloAsync(ct);
 
         var sucesso = Assert.Single(cenario.Ambiente.Arquivos("Processed"));
-        Assert.Matches(@"^20261111103000__sucesso-[0-9a-f]{8}\.json$", sucesso);
+        Assert.Equal("20261111103000.json", sucesso);
         var pendente = Assert.Single(cenario.Ambiente.Arquivos("Input"));
         Assert.Matches(@"^20261111103000__pendente-[0-9a-f]{8}\.json$", pendente);
         var conteudoPendente = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Input", pendente), ct);
@@ -102,8 +102,10 @@ public sealed class FalhasBancoTests(SqlServerFixture sql)
         Assert.Equal(EstadosRegistro.Inativado, depois.Estado);
         Assert.Equal(antes.PendenteDesde, depois.PendenteDesde);
         Assert.Equal(3, cenario.Ambiente.LinhasLog("Logs").Length);
-        Assert.Equal(2, cenario.Ambiente.Arquivos("Processed").Length);
-        Assert.All(cenario.Ambiente.Arquivos("Processed"), a => Assert.StartsWith("20261111103000__sucesso-", a, StringComparison.Ordinal));
+        // Bug nome-original-sem-trace: a 2ª parte de sucesso é mesclada no histórico com o nome original.
+        Assert.Equal(["20261111103000.json"], cenario.Ambiente.Arquivos("Processed"));
+        var historico = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Processed", "20261111103000.json"), ct);
+        Assert.All(["22222222222", "33333333333", "44444444444"], cpf => Assert.Contains(cpf, historico, StringComparison.Ordinal));
         Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("44444444444", ct));
     }

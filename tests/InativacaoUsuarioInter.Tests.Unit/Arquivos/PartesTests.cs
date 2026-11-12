@@ -20,9 +20,10 @@ public sealed class PartesTests
     }
 
     [Fact]
-    public void Arquivo_de_falhas_usa_o_nome_do_original_feature_002() =>
-        // FR-010 / research R-05: a base raiz já é a do original, mesmo quando a origem é uma parte __pendente-.
-        Assert.Equal("20261111103000.txt", NomeadorPartes.ArquivoFalhas("20261111103000", ".txt"));
+    public void Partes_de_sucesso_e_falhas_usam_o_nome_do_original() =>
+        // FR-010 / research R-05 e bug nome-original-sem-trace: a base raiz já é a do original, mesmo quando a origem
+        // é uma parte __pendente-.
+        Assert.Equal("20261111103000.txt", NomeadorPartes.NomeOriginal("20261111103000", ".txt"));
 
     [Fact]
     public void Colisao_gera_base_com_hash_curto() =>

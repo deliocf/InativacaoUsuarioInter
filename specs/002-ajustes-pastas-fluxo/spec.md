@@ -19,6 +19,17 @@
 - Q: Quando o cadastro já tem `CHState = 1` mas `CHDownloadRequired = 0`, o serviço grava `CHDownloadRequired = 1` mesmo assim? → A: Sim; a linha é atualizada se `CHState <> 1` ou `CHDownloadRequired <> 1`, e o status de auditoria continua `JA_INATIVO` quando o `CHState` já era 1.
 - Q: Na primeira execução da nova versão, o serviço migra sozinho o conteúdo das pastas com nomes antigos ou só avisa? → A: Migra tudo — `Imput`→`Input` (com `.traceparent`), `Processados`→`Processed`, arquivos de `Falhas`→`Fail`, e os logs de `Auditoria`/`Falhas` são anexados aos novos `log_inativacao.log` de `Logs`/`Fail`.
 
+### Correção 2026-11-12 (bug `ja-inativo-sem-replicacao`)
+
+- Q: Um registro já inativo no WAccess do Inter (`JA_INATIVO`) deve ser copiado para `{FolderPathCondominio}/Input`? → A: Sim, sempre — no Condomínio o cadastro pode estar ativo (`CHState = 0`). Só falhas definitivas (ex.: CPF não encontrado) ficam fora da entrega (FR-011). Ver FR-009 e FR-009a.
+
+### Correção 2026-11-12 (bug `nome-original-sem-trace`)
+
+- Q: A parte com os registros de sucesso pode ter nome diferente do original (`<base>__sucesso-<h8>`)? → A: Não. Nunca renomear: a parte de sucesso tem o nome do original em `Processed` e na entrega a `{FolderPathCondominio}/Input`.
+- Q: E quando já existe arquivo com esse nome e outro conteúdo (ex.: 2ª parte de sucesso após reprocessar pendências)? → A: Em `Processed` e `Fail`, **mesclar** (acrescentar os registros novos ao arquivo existente). No `Input` do Condomínio, **esperar** na fila `Output` até o Condomínio consumir o arquivo anterior.
+- Q: O `.traceparent` deve ser copiado para o Condomínio? → A: Não. Nenhum arquivo de trace no Condomínio, sem propagação alternativa; o Condomínio abre trace próprio (constituição 2.0.0, Princípio IV).
+- As partes `__pendente-` (arquivos de trabalho na `Input` do Inter) continuam com o nome atual.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Pastas com nomes padronizados e criadas automaticamente (Priority: P1)
@@ -71,7 +82,7 @@ O Condomínio lê `{FolderPathCondominio}/Input`, processa os registros no WAcce
 
 1. **Given** `Settings:Instancia = Condominio` e um arquivo em `{FolderPathCondominio}/Input` com todos os registros inativados, **When** o ciclo termina, **Then** o arquivo está em `{FolderPathCondominio}/Processed` e não está mais em `Input`; nenhuma cópia é enviada a outro ambiente.
 2. **Given** um arquivo com um registro de falha definitiva, **When** o ciclo termina, **Then** `{FolderPathCondominio}/Fail` recebe um arquivo com o mesmo nome do original contendo somente esse registro, e `Processed` recebe somente os registros inativados.
-3. **Given** o arquivo `.traceparent` que acompanha um arquivo entregue pelo Inter, **When** o arquivo é processado, **Then** o processamento no Condomínio continua correlacionado ao do Inter, como na spec 001.
+3. ~~**Given** o arquivo `.traceparent` que acompanha um arquivo entregue pelo Inter, **When** o arquivo é processado, **Then** o processamento no Condomínio continua correlacionado ao do Inter.~~ *(Removido pelo bug `nome-original-sem-trace`: o Inter não entrega mais `.traceparent`; o Condomínio abre trace próprio. Se um sidecar existir — arquivo antigo ou depositado à mão —, continua sendo usado.)*
 
 ---
 
@@ -94,8 +105,8 @@ Ao inativar um usuário no WAccess, o serviço marca também o cadastro como pen
 ### Edge Cases
 
 - **Falha ao gravar a cópia em `{FolderPathInter}/Processed`**: é tratada como falha transitória de arquivo; o arquivo não sai do fluxo (fica em `Output` ou na entrada como pendente) e a cópia é tentada de novo no ciclo seguinte, sem nova inativação.
-- **Arquivo de mesmo nome já presente no destino** (`{FolderPathCondominio}/Input`, `Processed`, `Output`, `Fail`): conteúdo idêntico é tratado como já entregue/gravado (no-op); conteúdo diferente recebe nome único rastreável ao original — nenhum arquivo existente é sobrescrito (spec 001, FR-030).
-- **Arquivo de falhas com o mesmo nome do original já existente em `Fail`** com conteúdo diferente (por exemplo, o mesmo nome de arquivo reenviado dias depois): o novo arquivo de falhas recebe nome único rastreável ao original; o anterior é preservado.
+- **Arquivo de mesmo nome já presente no destino** *(alterado pelo bug `nome-original-sem-trace`)*: conteúdo idêntico é tratado como já entregue/gravado (no-op). Conteúdo diferente: em `Processed` e `Fail`, os registros novos são **acrescentados** ao arquivo existente (mescla, sem renomear e sem perder o conteúdo anterior); em `{FolderPathCondominio}/Input`, a entrega **espera** em `Output` até o Condomínio consumir o arquivo anterior; na fila interna `Output`, recebe nome único, mas é entregue com o nome original.
+- **Arquivo de falhas com o mesmo nome do original já existente em `Fail`** com conteúdo diferente (por exemplo, o mesmo nome de arquivo reenviado dias depois, ou falhas da 2ª passada após pendências): os registros novos são acrescentados ao arquivo existente; o conteúdo anterior é preservado.
 - **Arquivo com pendências transitórias**: os registros pendentes permanecem em `{raiz}/Input` para retentativa (spec 001, FR-029); somente os registros concluídos seguem o fluxo de sucesso.
 - **Arquivo em `{FolderPathInter}/Output` não gerado pelo serviço**: não é entregue ao Condomínio; gera alerta, como na spec 001.
 - **Pastas com nomes antigos contendo arquivos** (`Imput`, `Auditoria`, `Processados`, `Falhas`): o conteúdo é migrado para as pastas novas (FR-004); colisão de nome com conteúdo diferente gera nome único rastreável, sem sobrescrever; arquivos temporários (`.tmp`) de escritas interrompidas não são migrados.
@@ -135,8 +146,10 @@ Ao inativar um usuário no WAccess, o serviço marca também o cadastro como pen
 - **FR-007**: Em todo ciclo da instância `Inter`, o sistema MUST tentar entregar em `{FolderPathCondominio}/Input` cada arquivo gerado pelo serviço que esteja em `{FolderPathInter}/Output`, sem limite de ciclos, até a entrega ser confirmada.
 - **FR-007a**: Na instância `Inter`, quando a entrega pendente mais antiga tiver sido registrada (momento em que o arquivo entrou na fila `Output`) há mais de `Processamento:AlertaPendenciaHoras` (padrão 24 h), o estado de saúde MUST sinalizar o alerta `ENTREGA_PENDENTE_ACIMA_LIMITE`, mantendo as tentativas; o alerta MUST cessar no primeiro ciclo em que não houver entrega pendente acima do limite.
 - **FR-008**: Depois de confirmar a integridade da cópia em `{FolderPathCondominio}/Input`, o sistema MUST remover o arquivo de `{FolderPathInter}/Output`. A confirmação da entrega MUST ser registrada de forma durável antes da remoção, de modo que um reinício entre os dois passos não gere segunda cópia no Condomínio.
-- **FR-009**: A entrega ao Condomínio MUST tornar o arquivo visível em `{FolderPathCondominio}/Input` somente quando completo, junto com seu `.traceparent` (spec 001, FR-033 e FR-039), e MUST NOT entregar o mesmo conteúdo mais de uma vez.
-- **FR-010**: Registros com falha definitiva MUST ser gravados em um arquivo em `{FolderPathInter}/Fail` com **o mesmo nome e extensão do arquivo original**, no formato original, contendo somente esses registros. Se já existir em `Fail` um arquivo com esse nome e conteúdo diferente, o novo arquivo MUST receber nome único rastreável ao original, sem sobrescrever o existente.
+- **FR-009**: A entrega ao Condomínio MUST tornar o arquivo visível em `{FolderPathCondominio}/Input` somente quando completo, **com o nome do arquivo original** e **sem arquivo `.traceparent`** (bug `nome-original-sem-trace`; substitui a propagação de FR-033/FR-039 da spec 001), e MUST NOT entregar o mesmo **arquivo gerado** (mesmo nome na fila `Output` e mesmo conteúdo) mais de uma vez. *(Corrigido pelo bug `ja-inativo-sem-replicacao`, 2026-11-12: antes dizia "o mesmo conteúdo".)* Uma parte de sucesso gerada por **outro arquivo de entrada** MUST ser entregue mesmo que seus bytes sejam iguais aos de uma parte já entregue — o caso típico é reenviar CPFs que já estão inativos no Inter (`JA_INATIVO`), que podem ter voltado a `CHState = 0` no Condomínio.
+- **FR-009a** *(bug `ja-inativo-sem-replicacao`; detalha FR-026 da spec 001)*: Nas duas instâncias, um arquivo de entrada é identificado pelo **nome e conteúdo**. O mesmo arquivo (mesmo nome e mesmo conteúdo) visto de novo MUST ser no-op; um arquivo com o mesmo conteúdo e outro nome MUST ser processado como novo (pré-leitura e passo B de novo, nova linha de auditoria). Arquivos já registrados no diário pela versão anterior (identidade só pelo conteúdo) MUST continuar reconhecidos quando reaparecem com o mesmo nome.
+- **FR-010**: Registros com falha definitiva MUST ser gravados em um arquivo em `{FolderPathInter}/Fail` com **o mesmo nome e extensão do arquivo original**, no formato original, contendo somente esses registros. Se já existir em `Fail` um arquivo com esse nome e conteúdo diferente, os registros novos MUST ser acrescentados a ele (mescla), sem renomear e sem perder o conteúdo existente *(bug `nome-original-sem-trace`)*.
+- **FR-010a** *(bug `nome-original-sem-trace`)*: A parte com os registros concluídos com sucesso MUST ter **o mesmo nome e extensão do arquivo original**, em `Processed` (Inter e Condomínio) e na entrega a `{FolderPathCondominio}/Input`. Colisão em `Processed` com conteúdo diferente MUST ser mesclada como em FR-010. Colisão no `Input` do Condomínio MUST NOT renomear nem sobrescrever: a entrega permanece em `Output` e é tentada a cada ciclo, na ordem da fila, até o nome ficar livre (FR-007a alerta esperas longas). A mescla MUST ser idempotente (repetir não altera o arquivo) e atômica (temporário + rename).
 - **FR-011**: Pendências e falhas definitivas MUST NOT ser entregues ao Condomínio nem gravadas em `Processed`.
 
 #### Fluxo da instância Condomínio
@@ -172,7 +185,7 @@ Mantém-se o orçamento da spec 001 sem alteração (throughput, latência p95 p
 - **SC-003**: Com o destino disponível, 100% dos arquivos concluídos no Inter chegam a `{FolderPathCondominio}/Input` no mesmo ciclo em que foram processados, dentro do orçamento de tempo do ciclo (hoje só chegam num ciclo posterior sem novos arquivos de entrada).
 - **SC-004**: Após o destino do Condomínio voltar a ficar disponível, 100% dos arquivos em `{FolderPathInter}/Output` são entregues e removidos de `Output` no primeiro ciclo seguinte; em 100 ciclos consecutivos com falhas e reinícios simulados, 0 entregas duplicadas e 0 arquivos perdidos.
 - **SC-005**: 100% dos arquivos concluídos com sucesso no Inter têm cópia idêntica em `{FolderPathInter}/Processed`.
-- **SC-006**: 100% dos arquivos com falha definitiva geram um arquivo em `Fail` com o mesmo nome do original (ou nome único rastreável, em caso de colisão) contendo exatamente os registros que falharam.
+- **SC-006**: 100% dos arquivos com falha definitiva geram um arquivo em `Fail` com o mesmo nome do original contendo os registros que falharam (em colisão, mesclados ao arquivo existente).
 - **SC-007**: 100% dos CPFs inativados ficam com o estado de inativação e `CHDownloadRequired = 1` em todas as suas linhas, e 0 campos além desses dois são alterados, verificado por comparação do banco antes/depois.
 - **SC-008**: O arquivo de teste depositado em `{FolderPathInter}/Input` é processado no primeiro ciclo após a implantação da mudança.
 
@@ -182,7 +195,7 @@ Mantém-se o orçamento da spec 001 sem alteração (throughput, latência p95 p
 - **Migração das pastas antigas**: feita pelo próprio serviço (FR-004), sem passo manual. As linhas dos logs antigos são mescladas aos novos na ordem original, antes das linhas novas (as antigas são sempre anteriores); não há reordenação linha a linha por data. Na máquina de desenvolvimento, `Files/Condominio/Imput` contém um arquivo de teste e seu `.traceparent`, que serão migrados para `Files/Condominio/Input`.
 - **"Processado com sucesso" em arquivo misto**: segue a segregação da spec 001 (FR-029) — só a parte com registros concluídos vai ao Condomínio e a `Processed`; falhas definitivas vão para `Fail`; pendências transitórias ficam em `Input`.
 - **Ordem no Inter**: a cópia em `Processed` e a entrega ao Condomínio acontecem no mesmo ciclo; `Output` só contém arquivos com entrega pendente. O histórico permanente do Inter passa a ser `Processed` (antes, `Output`).
-- **Nome do arquivo de falhas**: passa a ser o mesmo do original (antes, nome com sufixo); em colisão com conteúdo diferente, aplica-se nome único rastreável ao original, preservando a regra de nunca sobrescrever.
+- **Nome do arquivo de falhas e da parte de sucesso**: passa a ser o mesmo do original (antes, nome com sufixo); em colisão com conteúdo diferente, os registros são mesclados no arquivo existente (bug `nome-original-sem-trace`).
 - **`CHDownloadRequired`**: coluna existente em `CHMain`, cujo valor `1` indica ao WAccess que o cadastro deve ser enviado aos equipamentos. Cadastros inativados antes desta mudança só recebem a marca de download se o CPF for reenviado em um arquivo (FR-015); não há varredura retroativa do banco.
 - **Banco de testes local**: os testes podem alterar `CHState` e `CHDownloadRequired` no `W_ACCESS` local, como já autorizado na spec 001; a autorização não se estende a produção.
 - **Sem novo processo**: as mudanças ficam dentro do mesmo Worker Service (Princípio I); nenhuma fila ou serviço novo é criado.

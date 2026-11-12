@@ -96,7 +96,12 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
     {
         await using var conexao = await AbrirAsync(cancelamento);
         await using var comando = Comando(
-            conexao, "SELECT hash, hash_origem, tipo, caminho_final FROM parte_gerada WHERE hash = $h;", ("$h", hash));
+            conexao,
+            """
+            SELECT hash, hash_origem, tipo, caminho_final FROM parte_gerada WHERE hash = $h
+            ORDER BY tipo IN ('Integral','Sucesso') DESC, rowid DESC LIMIT 1;
+            """,
+            ("$h", hash));
         await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
         return await leitor.ReadAsync(cancelamento)
             ? new ParteGerada(leitor.GetString(0), leitor.GetString(1), leitor.GetString(2), leitor.GetString(3))
@@ -111,13 +116,26 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
             """
             SELECT a.hash_raiz, a.base_raiz
             FROM parte_gerada p JOIN arquivo a ON a.hash = p.hash_origem
-            WHERE p.hash = $h AND p.tipo = 'Pendente';
+            WHERE p.hash = $h AND p.tipo = 'Pendente'
+            ORDER BY p.rowid DESC LIMIT 1;
             """,
             ("$h", hash));
         await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
         return await leitor.ReadAsync(cancelamento)
             ? new OrigemArquivo(leitor.GetString(0), leitor.GetString(1))
             : null;
+    }
+
+    public async Task<string> ResolverChaveArquivoAsync(string nome, string hashConteudo, CancellationToken cancelamento)
+    {
+        // Diário da versão anterior: identidade = hash do conteúdo. Mantida para o mesmo arquivo (mesmo nome e
+        // conteúdo), para que retomadas e duplicados continuem reconhecidos depois da atualização.
+        await using var conexao = await AbrirAsync(cancelamento);
+        await using var comando = Comando(
+            conexao, "SELECT 1 FROM arquivo WHERE hash = $h AND nome_original = $n;", ("$h", hashConteudo), ("$n", nome));
+        return await comando.ExecuteScalarAsync(cancelamento) is null
+            ? Arquivos.HashConteudo.ChaveArquivo(nome, hashConteudo)
+            : hashConteudo;
     }
 
     public async Task RegistrarArquivoAsync(EstadoArquivo arquivo, IReadOnlyCollection<NovoRegistro> registros, CancellationToken cancelamento)
@@ -223,7 +241,7 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
     public Task MarcarLogArquivoGravadoAsync(string hash, CancellationToken cancelamento) =>
         ExecutarComandoAsync("UPDATE arquivo SET log_gravado = 1 WHERE hash = $h;", cancelamento, ("$h", hash));
 
-    public async Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento)
+    public async Task RegistrarParteAsync(ParteGerada parte, string? nomeEntrega, CancellationToken cancelamento, string? nomeDestino = null)
     {
         ArgumentNullException.ThrowIfNull(parte);
         var agora = Agora();
@@ -242,8 +260,8 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
         {
             await using var entrega = Comando(
                 conexao,
-                "INSERT OR IGNORE INTO entrega (hash, nome_output, estado, registrada_em) VALUES ($h, $n, 'NaoEntregue', $r);",
-                ("$h", parte.Hash), ("$n", nomeEntrega), ("$r", agora));
+                "INSERT OR IGNORE INTO entrega (hash, nome_output, nome_destino, estado, registrada_em) VALUES ($h, $n, $d, 'NaoEntregue', $r);",
+                ("$h", parte.Hash), ("$n", nomeEntrega), ("$d", nomeDestino), ("$r", agora));
             entrega.Transaction = transacao;
             await entrega.ExecuteNonQueryAsync(cancelamento);
         }
@@ -329,11 +347,14 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
             cancelamento,
             ("$h", hash), ("$n", nomeOutput), ("$r", Agora()));
 
-    public async Task<EntregaRegistrada?> ObterEntregaAsync(string hash, CancellationToken cancelamento)
+    public async Task<EntregaRegistrada?> ObterEntregaAsync(string hash, string nomeOutput, CancellationToken cancelamento)
     {
         await using var conexao = await AbrirAsync(cancelamento);
         await using var comando = Comando(
-            conexao, "SELECT hash, estado, nome_output, nome_destino FROM entrega WHERE hash = $h;", ("$h", hash));
+            conexao,
+            "SELECT hash, estado, nome_output, nome_destino FROM entrega WHERE hash = $h AND nome_output = $n;",
+            ("$h", hash),
+            ("$n", nomeOutput));
         await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
         return await leitor.ReadAsync(cancelamento)
             ? new EntregaRegistrada(leitor.GetString(0), leitor.GetString(1), leitor.GetString(2), TextoOuNulo(leitor, 3))
@@ -352,31 +373,32 @@ internal sealed class ArmazenamentoEstadoSqlite : IArmazenamentoEstado
     {
         await using var conexao = await AbrirAsync(cancelamento);
         await using var comando = Comando(
-            conexao, "SELECT hash, nome_output, tentativas FROM entrega WHERE estado = 'NaoEntregue' ORDER BY rowid;");
+            conexao, "SELECT hash, nome_output, tentativas, nome_destino FROM entrega WHERE estado = 'NaoEntregue' ORDER BY rowid;");
         await using var leitor = await comando.ExecuteReaderAsync(cancelamento);
         var lista = new List<EntregaPendente>();
         while (await leitor.ReadAsync(cancelamento))
         {
-            lista.Add(new EntregaPendente(leitor.GetString(0), leitor.GetString(1), leitor.GetInt32(2)));
+            lista.Add(new EntregaPendente(leitor.GetString(0), leitor.GetString(1), leitor.GetInt32(2), TextoOuNulo(leitor, 3)));
         }
 
         return lista;
     }
 
-    public Task RegistrarEntregaAsync(string hash, string nomeDestino, string? traceparent, DateTimeOffset agora, CancellationToken cancelamento) =>
+    public Task RegistrarEntregaAsync(
+        string hash, string nomeOutput, string nomeDestino, string? traceparent, DateTimeOffset agora, CancellationToken cancelamento) =>
         ExecutarComandoAsync(
             """
             UPDATE entrega SET estado = 'Entregue', nome_destino = $d, traceparent = $p, entregue_em = $t, ultima_falha = NULL
-            WHERE hash = $h;
+            WHERE hash = $h AND nome_output = $n;
             """,
             cancelamento,
-            ("$d", nomeDestino), ("$p", traceparent), ("$t", Formatar(agora)), ("$h", hash));
+            ("$d", nomeDestino), ("$p", traceparent), ("$t", Formatar(agora)), ("$h", hash), ("$n", nomeOutput));
 
-    public Task RegistrarFalhaEntregaAsync(string hash, string categoria, CancellationToken cancelamento) =>
+    public Task RegistrarFalhaEntregaAsync(string hash, string nomeOutput, string categoria, CancellationToken cancelamento) =>
         ExecutarComandoAsync(
-            "UPDATE entrega SET tentativas = tentativas + 1, ultima_falha = $f WHERE hash = $h;",
+            "UPDATE entrega SET tentativas = tentativas + 1, ultima_falha = $f WHERE hash = $h AND nome_output = $n;",
             cancelamento,
-            ("$f", categoria), ("$h", hash));
+            ("$f", categoria), ("$h", hash), ("$n", nomeOutput));
 
     public async Task<int> ContarEntregasPendentesAsync(CancellationToken cancelamento)
     {

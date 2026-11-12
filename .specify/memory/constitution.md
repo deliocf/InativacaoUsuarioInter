@@ -1,6 +1,21 @@
 <!--
-SYNC IMPACT REPORT
-==================
+SYNC IMPACT REPORT (emenda 2026-11-12)
+======================================
+Version change: 1.0.0 → 2.0.0
+Bump rationale: MAJOR — redefinição incompatível de regra MUST do Princípio IV: a
+propagação obrigatória do contexto de trace na replicação Inter → Condomínio foi removida
+(pedido do responsável pelo projeto: nenhum arquivo de trace no Condomínio; bug
+`nome-original-sem-trace`). A propagação dentro de cada instância continua obrigatória.
+Modified principles: IV. Telemetria Nativa com OpenTelemetry (bullet de propagação).
+Added/removed sections: nenhuma.
+Dependent artifacts: specs/002-ajustes-pastas-fluxo (FR-009, US cenário 3 da história do
+Condomínio) atualizados; templates não mudam.
+Migração do código: ServicoReplicacao deixa de gravar `.traceparent` no Condomínio; o
+Condomínio continua aceitando um sidecar se existir (arquivos antigos/manuais).
+Pendente: aprovação da emenda por PR (Governance).
+
+SYNC IMPACT REPORT (ratificação)
+================================
 Version change: (template não preenchido) → 1.0.0
 Bump rationale: MAJOR inicial — primeira ratificação; todos os placeholders substituídos.
 
@@ -123,8 +138,11 @@ falhas vira corrupção de dados.
 - Spans MUST cobrir cada chamada externa (SQL, sistema de arquivos remoto, HTTP) com
   atributos semânticos padrão OTel e atributos de domínio: `instancia`, `arquivo`,
   `idempotency_key`, `resultado` (`sucesso|transitoria|definitiva`), `tentativa`.
-- O contexto de trace MUST ser propagado através de fronteiras assíncronas e na
-  replicação Inter → Condomínio (ex.: `traceparent` em metadado/sidecar do arquivo).
+- O contexto de trace MUST ser propagado através de fronteiras assíncronas dentro de uma
+  instância. Na replicação Inter → Condomínio o contexto **não** é propagado: nenhum
+  arquivo de trace (`.traceparent`) é gravado no destino; o Inter registra o
+  `traceparent` da entrega no seu diário e o Condomínio abre uma raiz de trace própria
+  (emenda 2.0.0, bug `nome-original-sem-trace`).
 - Logs MUST ser estruturados (`ILogger` com templates), correlacionados com
   `TraceId`/`SpanId`, e exportados via OpenTelemetry. `Console.WriteLine` e concatenação
   de strings em logs são PROIBIDOS.
@@ -257,4 +275,4 @@ dispara retries e abre circuitos. Orçamentos explícitos tornam a performance v
 - Regras marcadas com MUST/PROIBIDO são não negociáveis; SHOULD/desencorajado exigem
   justificativa escrita quando não seguidas.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-11
+**Version**: 2.0.0 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-12

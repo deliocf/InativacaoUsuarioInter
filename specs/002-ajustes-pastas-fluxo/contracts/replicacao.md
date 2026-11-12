@@ -20,17 +20,17 @@ Uma cópia **byte a byte** de cada arquivo da fila de saída `{FolderPathInter}/
 1. Remover `<nome>.tmp` órfão de tentativa anterior, se houver.
 2. Copiar para `{FolderPathCondominio}/Input/<nome>.tmp`.
 3. Ler o `.tmp` de volta e comparar o SHA-256 com o da origem. Se diferir, a entrega falha, o `.tmp` é removido e a entrega fica para o próximo ciclo.
-4. Gravar `{FolderPathCondominio}/Input/<nome>.traceparent` (opcional; W3C `00-<trace-id>-<span-id>-<flags>`).
+4. ~~Gravar `<nome>.traceparent`~~ — removido (bug `nome-original-sem-trace`, constituição 2.0.0): nenhum arquivo de trace no Condomínio; o `traceparent` fica só em `entrega.traceparent` no diário do Inter. `<nome>` é o **nome do original** (`entrega.nome_destino`), não necessariamente o nome na fila `Output`.
 5. Renomear `<nome>.tmp` para `<nome>`. A partir deste ponto o arquivo fica elegível no Condomínio.
 6. Registrar `Entregue` no diário do Inter (durável).
-7. **Novo**: remover `Output/<nome>` (e seu `.traceparent`, se houver). Se `Processed` não tiver arquivo com o mesmo hash (arquivo herdado da versão anterior), mover para `Processed` em vez de remover.
+7. **Novo**: remover `Output/<nome>` (e seu `.traceparent`, se houver). Parte gerada pelo serviço (histórico já em `Processed`, possivelmente mesclado): só remove. Arquivo herdado da versão anterior (histórico vivia em `Output`): move para `Processed` com o nome original, mesclando em colisão.
 
 ## Regras
 
 | Situação | Comportamento |
 | --- | --- |
 | `<nome>` já existe no destino com o mesmo SHA-256 | Registra `Entregue` (no-op) e segue para o passo 7 |
-| `<nome>` já existe com conteúdo diferente | Entrega como `<base>__<h8>.<ext>` |
+| `<nome>` já existe com conteúdo diferente | **Não** renomeia nem sobrescreve: a entrega fica em `Output` (`tentativas++`, `ultima_falha = DestinoOcupado`), sem marcar o destino como indisponível; nova tentativa no próximo ciclo, depois que o Condomínio consumir o arquivo anterior |
 | Destino indisponível ou sem permissão | Transitório: arquivo permanece em `Output`, `tentativas++`, nova tentativa no próximo ciclo |
 | Reinício entre os passos 6 e 7 | Na reconciliação seguinte, o arquivo em `Output` com entrega `Entregue` é removido/movido (passo 7) sem nova cópia |
 | Arquivo em `Output` sem registro no diário | Não é entregue nem removido; alerta `ARQUIVO_OUTPUT_DESCONHECIDO` |
@@ -39,7 +39,7 @@ Uma cópia **byte a byte** de cada arquivo da fila de saída `{FolderPathInter}/
 ## Lado Condomínio
 
 - Lê somente `{FolderPathCondominio}/Input`; ignora `.tmp` e `.traceparent` na elegibilidade.
-- Usa `<nome>.traceparent` como *parent* do span `arquivo` e o move junto com o arquivo para `Processed/` ou `Fail/`.
+- Abre uma raiz de trace própria para cada arquivo. Se houver um `<nome>.traceparent` (arquivo antigo ou depositado à mão), ainda o usa como *parent* e o move junto com o arquivo.
 - Arquivo com hash já processado é no-op.
 - Não grava em `Output` nem entrega a outro ambiente; não acessa `FolderPathInter`.
 

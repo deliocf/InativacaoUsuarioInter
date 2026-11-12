@@ -126,13 +126,14 @@ public sealed class ArmazenamentoEstadoTests : IDisposable
         await estado.InicializarAsync(ct);
         await new ArmazenamentoEstadoSqlite(ConfiguracaoTeste.Criar(_diretorio)).InicializarAsync(ct);
 
-        var pendente = await estado.ObterEntregaAsync("h-antiga", ct);
-        var entregue = await estado.ObterEntregaAsync("h-entregue", ct);
+        var pendente = await estado.ObterEntregaAsync("h-antiga", "a.json", ct);
+        var entregue = await estado.ObterEntregaAsync("h-entregue", "b.json", ct);
         var maisAntiga = await estado.ObterEntregaPendenteMaisAntigaAsync(ct);
 
         Assert.Equal(new EntregaRegistrada("h-antiga", EstadosEntrega.NaoEntregue, "a.json", null), pendente);
         Assert.Equal(new EntregaRegistrada("h-entregue", EstadosEntrega.Entregue, "b.json", "b.json"), entregue);
-        Assert.Null(await estado.ObterEntregaAsync("inexistente", ct));
+        Assert.Null(await estado.ObterEntregaAsync("inexistente", "a.json", ct));
+        Assert.Null(await estado.ObterEntregaAsync("h-antiga", "outro.json", ct));
         Assert.NotNull(maisAntiga);
         Assert.InRange(maisAntiga.Value, antes, DateTimeOffset.UtcNow.AddSeconds(1));
     }
@@ -147,11 +148,83 @@ public sealed class ArmazenamentoEstadoTests : IDisposable
         await estado.RegistrarArquivoAsync(Arquivo("orig", "orig"), [], ct);
         await estado.RegistrarParteAsync(new ParteGerada("p1", "orig", TiposParte.Integral, Path.Combine("Processed", "x.json")), "x__1.json", ct);
         var primeira = await estado.ObterEntregaPendenteMaisAntigaAsync(ct);
-        await estado.RegistrarEntregaAsync("p1", "x.json", null, DateTimeOffset.UtcNow, ct);
+        await estado.RegistrarEntregaAsync("p1", "x__1.json", "x.json", null, DateTimeOffset.UtcNow, ct);
 
         Assert.NotNull(primeira);
-        Assert.Equal("x__1.json", (await estado.ObterEntregaAsync("p1", ct))!.NomeOutput);
+        Assert.Equal("x__1.json", (await estado.ObterEntregaAsync("p1", "x__1.json", ct))!.NomeOutput);
         Assert.Null(await estado.ObterEntregaPendenteMaisAntigaAsync(ct));
+    }
+
+    [Fact]
+    public async Task Mesma_parte_de_origens_diferentes_gera_duas_partes_e_duas_entregas()
+    {
+        // Bug ja-inativo-sem-replicacao: CPFs reenviados num novo arquivo geram uma parte de sucesso com os mesmos
+        // bytes de uma parte já entregue; ela não pode ser descartada como "já entregue".
+        var ct = TestContext.Current.CancellationToken;
+        var estado = new ArmazenamentoEstadoSqlite(ConfiguracaoTeste.Criar(_diretorio));
+        await estado.RegistrarArquivoAsync(Arquivo("orig1", "orig1"), [], ct);
+        await estado.RegistrarArquivoAsync(Arquivo("orig2", "orig2"), [], ct);
+        await estado.RegistrarParteAsync(new ParteGerada("p", "orig1", TiposParte.Sucesso, "a__sucesso-p.txt"), "a__sucesso-p.txt", ct);
+        await estado.RegistrarEntregaAsync("p", "a__sucesso-p.txt", "a__sucesso-p.txt", null, DateTimeOffset.UtcNow, ct);
+
+        await estado.RegistrarParteAsync(new ParteGerada("p", "orig2", TiposParte.Sucesso, "b__sucesso-p.txt"), "b__sucesso-p.txt", ct, "b.txt");
+
+        var pendente = Assert.Single(await estado.ListarEntregasPendentesAsync(ct));
+        Assert.Equal(new EntregaPendente("p", "b__sucesso-p.txt", 0, "b.txt"), pendente);
+        Assert.Equal(EstadosEntrega.Entregue, (await estado.ObterEntregaAsync("p", "a__sucesso-p.txt", ct))!.Estado);
+        Assert.Equal(EstadosEntrega.NaoEntregue, (await estado.ObterEntregaAsync("p", "b__sucesso-p.txt", ct))!.Estado);
+        Assert.Equal("b__sucesso-p.txt", (await estado.ObterParteAsync("p", ct))!.CaminhoFinal);
+    }
+
+    [Fact]
+    public async Task Chave_do_arquivo_usa_nome_e_conteudo_e_reconhece_o_diario_da_versao_anterior()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var estado = new ArmazenamentoEstadoSqlite(ConfiguracaoTeste.Criar(_diretorio));
+
+        // Versão anterior: identidade = hash do conteúdo, gravada com o nome original.
+        await estado.RegistrarArquivoAsync(Arquivo("conteudo", "conteudo"), [], ct);
+
+        Assert.Equal("conteudo", await estado.ResolverChaveArquivoAsync("20261111103000.json", "conteudo", ct));
+        var outroNome = await estado.ResolverChaveArquivoAsync("outro.json", "conteudo", ct);
+        Assert.Equal(Service.Arquivos.HashConteudo.ChaveArquivo("outro.json", "conteudo"), outroNome);
+        Assert.NotEqual("conteudo", outroNome);
+        Assert.NotEqual(outroNome, await estado.ResolverChaveArquivoAsync("terceiro.json", "conteudo", ct));
+    }
+
+    [Fact]
+    public async Task Migracao_v4_preserva_partes_e_entregas_de_um_diario_v3()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        Directory.CreateDirectory(_diretorio);
+        await using (var conexao = new SqliteConnection($"Data Source={Path.Combine(_diretorio, ArmazenamentoEstadoSqlite.NomeArquivo)};Pooling=False"))
+        {
+            await conexao.OpenAsync(ct);
+            await using var comando = conexao.CreateCommand();
+            comando.CommandText =
+                "CREATE TABLE versao_esquema (versao INTEGER NOT NULL);" + Migracoes.Scripts[0] + Migracoes.Scripts[1] + Migracoes.Scripts[2] +
+                "INSERT INTO versao_esquema VALUES (1),(2),(3);" +
+                "INSERT INTO arquivo (hash, hash_raiz, instancia, nome_original, base_raiz, formato, estado, detectado_em) " +
+                "VALUES ('o', 'o', 'Inter', 'a.txt', 'a', 'Txt', 'Concluido', '2026-11-12T00:00:00Z');" +
+                "INSERT INTO parte_gerada (hash, hash_origem, tipo, caminho_final, gravado_em) VALUES ('p', 'o', 'Sucesso', 'x', '2026-11-12T00:00:00Z');" +
+                "INSERT INTO entrega (hash, nome_output, estado, registrada_em) VALUES ('z', 'z.txt', 'NaoEntregue', '2026-11-12T00:00:00Z');" +
+                "INSERT INTO entrega (hash, nome_output, estado, nome_destino, tentativas, registrada_em) VALUES ('p', 'a__sucesso-p.txt', 'Entregue', 'a__sucesso-p.txt', 2, '2026-11-12T00:00:01Z');" +
+                "INSERT INTO entrega (hash, nome_output, estado, registrada_em) VALUES ('q', 'q.txt', 'NaoEntregue', '2026-11-12T00:00:02Z');";
+            await comando.ExecuteNonQueryAsync(ct);
+        }
+
+        var estado = new ArmazenamentoEstadoSqlite(ConfiguracaoTeste.Criar(_diretorio));
+        await estado.InicializarAsync(ct);
+
+        Assert.Equal(new ParteGerada("p", "o", TiposParte.Sucesso, "x"), await estado.ObterParteAsync("p", ct));
+        Assert.Equal(new EntregaRegistrada("p", EstadosEntrega.Entregue, "a__sucesso-p.txt", "a__sucesso-p.txt"), await estado.ObterEntregaAsync("p", "a__sucesso-p.txt", ct));
+        Assert.Equal(["z.txt", "q.txt"], (await estado.ListarEntregasPendentesAsync(ct)).Select(e => e.NomeOutput));
+        Assert.Equal(2, await estado.ContarEntregasPendentesAsync(ct));
+
+        // Depois da migração, a mesma parte vinda de outra origem é aceita como nova entrega.
+        await estado.RegistrarArquivoAsync(Arquivo("o2", "o2"), [], ct);
+        await estado.RegistrarParteAsync(new ParteGerada("p", "o2", TiposParte.Sucesso, "y"), "b__sucesso-p.txt", ct);
+        Assert.Equal(3, await estado.ContarEntregasPendentesAsync(ct));
     }
 
     public void Dispose()

@@ -18,10 +18,11 @@ internal static class NomeadorPartes
         $"{baseRaiz}__{tipo}-{hash[..TamanhoHashCurto]}{extensao}";
 
     /// <summary>
-    /// Feature 002 (FR-010, research R-05): arquivo de falhas com o nome do original (<c>&lt;baseRaiz&gt;.&lt;ext&gt;</c>),
-    /// inclusive quando a origem é uma parte <c>__pendente-</c> reprocessada.
+    /// Nome do original (<c>&lt;baseRaiz&gt;.&lt;ext&gt;</c>), inclusive quando a origem é uma parte <c>__pendente-</c>
+    /// reprocessada: usado pelas partes de sucesso (<c>Processed</c> e entrega ao Condomínio) e de falhas (<c>Fail</c>)
+    /// — feature 002 FR-010 e bug nome-original-sem-trace.
     /// </summary>
-    public static string ArquivoFalhas(string baseRaiz, string extensao) => baseRaiz + extensao;
+    public static string NomeOriginal(string baseRaiz, string extensao) => baseRaiz + extensao;
 
     /// <summary>Nome alternativo em colisão com conteúdo diferente: <c>&lt;base&gt;__&lt;h8&gt;.&lt;ext&gt;</c>.</summary>
     public static string Colisao(string nome, string hash) =>

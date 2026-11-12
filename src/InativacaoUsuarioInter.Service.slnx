@@ -2,7 +2,7 @@
   <Folder Name="/src/">
     <Project Path="InativacaoUsuarioInter.Service/InativacaoUsuarioInter.Service.csproj" />
     <Project Path="InativacaoUsuarioInter.Setup/InativacaoUsuarioInter.Setup.vdproj" Type="Installer">
-      <Build />
+      <Build Solution="Release|*" />
     </Project>
   </Folder>
   <Folder Name="/tests/">

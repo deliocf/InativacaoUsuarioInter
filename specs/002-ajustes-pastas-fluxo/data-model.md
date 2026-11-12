@@ -32,10 +32,17 @@ Novas operações em `IArmazenamentoEstado`:
 
 | Operação | Uso |
 | --- | --- |
-| `ObterEntregaAsync(hash)` → `{Estado, NomeOutput, NomeDestino}?` | reconciliação de `Output`: decidir entre entregar, limpar ou alertar (research R-04) |
+| `ObterEntregaAsync(hash, nomeOutput)` → `{Estado, NomeOutput, NomeDestino}?` | reconciliação de `Output`: decidir entre entregar, limpar ou alertar (research R-04) |
 | `ObterEntregaPendenteMaisAntigaAsync()` → `DateTimeOffset?` | alerta R-07 |
+| `ResolverChaveArquivoAsync(nome, hashConteudo)` → `string` | identidade do arquivo de entrada (FR-009a) |
 
 `RegistrarParteAsync(..., registrarEntrega: true)` passa a gravar `registrada_em`.
+
+### Migração v4 (bug `ja-inativo-sem-replicacao`, FR-009/FR-009a)
+
+- `arquivo.hash` passa a ser a **identidade** do arquivo de entrada: `SHA-256(nome|hashConteudo)`. Linhas da versão anterior (identidade = hash do conteúdo) continuam válidas: `ResolverChaveArquivoAsync` devolve o hash do conteúdo quando o diário já tem esse conteúdo com o mesmo `nome_original`. As chaves de registro (`instancia|hashRaiz|cpf`) derivam dessa identidade.
+- *(bug `nome-original-sem-trace`, sem migração)* `entrega.nome_destino` passa a ser preenchido já no registro da entrega com o **nome original** com que o arquivo deve aparecer no Condomínio (a fila `Output` pode usar nome único quando duas partes do mesmo original coexistem). Entregas antigas com `nome_destino` nulo usam `nome_output`. `entrega.ultima_falha = 'DestinoOcupado'` indica que o Condomínio ainda tem outro arquivo com esse nome. `parte_gerada.caminho_final` de partes de sucesso/falhas aponta para o arquivo do histórico com o nome original, que pode conter outras partes mescladas.
+- `parte_gerada.hash` e `entrega.hash` continuam sendo o hash do **conteúdo** da parte (comparado com os arquivos em disco). As tabelas são recriadas com chave `(hash, hash_origem)` e `(hash, nome_output)`, preservando linhas e ordem: a mesma parte gerada por outro arquivo de entrada é outra entrega.
 
 ## 3. Ciclo de vida de um conteúdo concluído no Inter
 

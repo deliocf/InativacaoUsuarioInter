@@ -33,6 +33,33 @@ public sealed class FluxoCondominioTests(SqlServerFixture sql)
     }
 
     [Fact]
+    public async Task Bug_entrega_com_conteudo_ja_processado_e_outro_nome_reinativa_cadastro_reativado()
+    {
+        // Bug ja-inativo-sem-replicacao: o Inter reentrega a mesma parte (mesmos bytes) com outro nome; o Condomínio
+        // precisa processá-la de novo, porque o cadastro pode ter voltado a CHState = 0.
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await CriarAsync();
+        await cenario.Banco.InserirUsuarioAsync("22222222222", 0, cancelamento: ct);
+        cenario.Ambiente.Depositar("20261112111122__sucesso-95990873.txt", "22222222222,3,Delio\r\n");
+        await cenario.CicloAsync(ct);
+        Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
+
+        await cenario.Banco.ExecutarAsync("UPDATE dbo.CHMain SET CHState = 0 WHERE IdNumber = '22222222222';", ct);
+        cenario.Ambiente.Depositar("20261112111333__sucesso-95990873.txt", "22222222222,3,Delio\r\n");
+        await cenario.CicloAsync(ct);
+
+        Assert.Equal([(short)1], await cenario.Banco.ObterEstadosAsync("22222222222", ct));
+        var linhas = cenario.Ambiente.LinhasLog("Logs");
+        Assert.Equal(2, linhas.Length);
+        Assert.Contains("arquivo=20261112111333__sucesso-95990873.txt", linhas[1], StringComparison.Ordinal);
+        Assert.EndsWith("status=INATIVADO", linhas[1], StringComparison.Ordinal);
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+        Assert.Equal(
+            ["20261112111122__sucesso-95990873.txt", "20261112111333__sucesso-95990873.txt"],
+            cenario.Ambiente.Arquivos("Processed").Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task Cpf_inexistente_no_condominio_vai_para_o_Fail_do_condominio_com_o_nome_original()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -46,7 +73,8 @@ public sealed class FluxoCondominioTests(SqlServerFixture sql)
         Assert.Single(cenario.Ambiente.Arquivos("Fail"), a => a == "a.txt");
         Assert.Equal("44444444444,2,Inexistente\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", "a.txt"), ct));
         Assert.False(Directory.Exists(Path.Combine(cenario.Ambiente.RaizInter, "Fail")), "O Condomínio não grava na raiz do Inter (FR-012).");
-        Assert.Single(cenario.Ambiente.Arquivos("Processed"), a => a.StartsWith("a__sucesso-", StringComparison.Ordinal));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Equal("22222222222,1,Maria\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Processed", "a.txt"), ct));
     }
 
     [Fact]
@@ -63,7 +91,7 @@ public sealed class FluxoCondominioTests(SqlServerFixture sql)
 
         await cenario.CicloAsync(ct);
 
-        Assert.Single(cenario.Ambiente.Arquivos("Processed"), a => a.StartsWith("a__sucesso-", StringComparison.Ordinal));
+        Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
         Assert.Single(cenario.Ambiente.Arquivos("Input"), a => a.StartsWith("a__pendente-", StringComparison.Ordinal));
     }
 

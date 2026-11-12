@@ -71,5 +71,39 @@ internal static class Migracoes
         ALTER TABLE entrega ADD COLUMN registrada_em TEXT NULL;
         UPDATE entrega SET registrada_em = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE registrada_em IS NULL;
         """,
+        // v4 (bug ja-inativo-sem-replicacao): a mesma parte (mesmo conteúdo) pode vir de arquivos de origem diferentes
+        // e cada uma é entregue. parte_gerada passa a ser única por (hash, hash_origem) e entrega por (hash, nome_output).
+        // Recria as tabelas preservando as linhas e a ordem (rowid) — a fila de entregas segue na mesma ordem.
+        """
+        CREATE TABLE parte_gerada_v4 (
+            hash TEXT NOT NULL,
+            hash_origem TEXT NOT NULL REFERENCES arquivo(hash),
+            tipo TEXT NOT NULL,
+            caminho_final TEXT NOT NULL,
+            gravado_em TEXT NOT NULL,
+            PRIMARY KEY (hash, hash_origem)
+        );
+        INSERT INTO parte_gerada_v4 (hash, hash_origem, tipo, caminho_final, gravado_em)
+            SELECT hash, hash_origem, tipo, caminho_final, gravado_em FROM parte_gerada ORDER BY rowid;
+        DROP TABLE parte_gerada;
+        ALTER TABLE parte_gerada_v4 RENAME TO parte_gerada;
+        CREATE TABLE entrega_v4 (
+            hash TEXT NOT NULL,
+            nome_output TEXT NOT NULL,
+            nome_destino TEXT NULL,
+            estado TEXT NOT NULL CHECK (estado IN ('NaoEntregue','Entregue')),
+            tentativas INTEGER NOT NULL DEFAULT 0,
+            ultima_falha TEXT NULL,
+            entregue_em TEXT NULL,
+            traceparent TEXT NULL,
+            registrada_em TEXT NULL,
+            PRIMARY KEY (hash, nome_output)
+        );
+        INSERT INTO entrega_v4 (hash, nome_output, nome_destino, estado, tentativas, ultima_falha, entregue_em, traceparent, registrada_em)
+            SELECT hash, nome_output, nome_destino, estado, tentativas, ultima_falha, entregue_em, traceparent, registrada_em
+            FROM entrega ORDER BY rowid;
+        DROP TABLE entrega;
+        ALTER TABLE entrega_v4 RENAME TO entrega;
+        """,
     ];
 }

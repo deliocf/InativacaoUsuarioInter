@@ -69,7 +69,7 @@ public sealed class InterCondominioTests(SqlServerFixture sql)
 
         // Feature 002 (T039): no Inter, histórico em Processed, fila Output vazia e falhas com o nome original;
         // cada instância grava as falhas na própria raiz; inativações com a marca de download.
-        Assert.Single(ambiente.Arquivos("Processed", ambiente.RaizInter), a => a.StartsWith("20261111103000__sucesso-", StringComparison.Ordinal));
+        Assert.Equal(["20261111103000.json"], ambiente.Arquivos("Processed", ambiente.RaizInter));
         Assert.Empty(ambiente.Arquivos("Output", ambiente.RaizInter));
         Assert.Contains("20261111103000.json", ambiente.Arquivos("Fail", ambiente.RaizInter));
         Assert.DoesNotContain(ambiente.Arquivos("Fail", ambiente.RaizCondominio), a => a.EndsWith(".json", StringComparison.Ordinal));
@@ -77,10 +77,13 @@ public sealed class InterCondominioTests(SqlServerFixture sql)
         Assert.Equal([((short)1, (bool?)true)], await bancoCondominio.ObterEstadosDownloadAsync("22222222222", ct));
         Assert.Equal([((short)1, (bool?)true)], await bancoInter.ObterEstadosDownloadAsync("33333333333", ct));
 
+        // Bug nome-original-sem-trace (constituição v2.0.0, Princípio IV): sem .traceparent no Condomínio, que abre
+        // uma raiz de trace própria.
         telemetria.Coletar();
         var copia = Assert.Single(telemetria.Spans, s => s.DisplayName == "replicacao.copiar");
-        Assert.Contains(
-            telemetria.Spans,
-            s => s.DisplayName == "arquivo" && Equals(s.GetTagItem("instancia"), "Condominio") && s.TraceId == copia.TraceId && s.ParentSpanId == copia.SpanId);
+        var arquivoCondominio = Assert.Single(
+            telemetria.Spans, s => s.DisplayName == "arquivo" && Equals(s.GetTagItem("instancia"), "Condominio"));
+        Assert.NotEqual(copia.TraceId, arquivoCondominio.TraceId);
+        Assert.Empty(Directory.GetFiles(ambiente.RaizCondominio, "*.traceparent", SearchOption.AllDirectories));
     }
 }

@@ -106,13 +106,12 @@ internal sealed class GerenciadorArquivos(
             Dependencias.PastaLocal,
             async ct =>
             {
-                var destino = await DestinoLivreAsync(Path.Combine(politica.PastaFail, leitura.Nome), leitura.Hash, ct);
-                await estado.RegistrarParteAsync(new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Rejeitado, destino), null, ct);
+                // Nome original sempre; colisão com conteúdo diferente → mescla (bug nome-original-sem-trace).
+                var destino = Path.Combine(politica.PastaFail, leitura.Nome);
+                await estado.RegistrarParteAsync(
+                    new ParteGerada(leitura.HashDoConteudo, leitura.Hash, TiposParte.Rejeitado, destino), null, ct);
                 pontoFalha.Atingido(PontoFalha.AntesRemoverOriginal);
-                if (File.Exists(leitura.Caminho))
-                {
-                    await EscritorAtomico.MoverAsync(leitura.Caminho, destino, ct);
-                }
+                await MescladorHistorico.MoverAsync(leitura.Caminho, destino, ct);
 
                 MoverSidecar(leitura.Caminho, destino);
                 await estado.ConcluirArquivoAsync(leitura.Hash, EstadosArquivo.Rejeitado, relogio.GetUtcNow(), ct);
@@ -172,23 +171,22 @@ internal sealed class GerenciadorArquivos(
             Dependencias.PastaLocal,
             async ct =>
             {
-                var destino = await DestinoLivreAsync(Path.Combine(politica.PastaConcluidos, leitura.Nome), leitura.Hash, ct);
+                // Nome original sempre; colisão em Processed com conteúdo diferente → mescla (bug nome-original-sem-trace).
+                var destino = Path.Combine(politica.PastaConcluidos, leitura.Nome);
                 string? nomeSaida = null;
                 if (politica.PastaSaida is { } saida)
                 {
-                    // Cópia na fila Output antes do diário; numa retomada o original já pode estar em Processed.
+                    // Cópia na fila Output antes do diário; numa retomada o original já pode estar em Processed
+                    // (só serve de origem se tiver exatamente o conteúdo do original, isto é, se não houve mescla).
                     var origem = File.Exists(leitura.Caminho) ? leitura.Caminho : destino;
-                    nomeSaida = await CopiarParaSaidaAsync(origem, leitura.Nome, leitura.Hash, saida, ct);
+                    nomeSaida = await CopiarParaSaidaAsync(origem, leitura.Nome, leitura.HashDoConteudo, saida, ct);
                 }
 
                 await estado.RegistrarParteAsync(
-                    new ParteGerada(leitura.Hash, leitura.Hash, TiposParte.Integral, destino), nomeSaida, ct);
+                    new ParteGerada(leitura.HashDoConteudo, leitura.Hash, TiposParte.Integral, destino), nomeSaida, ct, leitura.Nome);
                 pontoFalha.Atingido(PontoFalha.AposGravarPartes);
                 pontoFalha.Atingido(PontoFalha.AntesRemoverOriginal);
-                if (File.Exists(leitura.Caminho))
-                {
-                    await EscritorAtomico.MoverAsync(leitura.Caminho, destino, ct);
-                }
+                await MescladorHistorico.MoverAsync(leitura.Caminho, destino, ct);
 
                 MoverSidecar(leitura.Caminho, destino);
                 await estado.ConcluirArquivoAsync(leitura.Hash, EstadosArquivo.Concluido, relogio.GetUtcNow(), ct);
@@ -213,18 +211,19 @@ internal sealed class GerenciadorArquivos(
                 if (grupos.Sucessos.Count > 0)
                 {
                     var conteudo = SerializadorPartes.SerializarRegistros(formato, grupos.Sucessos);
+                    // Nome original (bug nome-original-sem-trace): em Processed e na entrega ao Condomínio.
                     destinoPrincipal = await GravarParteAsync(
                         leitura, conteudo, politica.PastaConcluidos,
-                        h => NomeadorPartes.Parte(leitura.BaseRaiz, NomeadorPartes.Sucesso, h, extensao),
+                        _ => NomeadorPartes.NomeOriginal(leitura.BaseRaiz, extensao),
                         TiposParte.Sucesso, politica.PastaSaida, ct);
                 }
 
                 if (grupos.Falhas.Count > 0)
                 {
-                    // Feature 002 (FR-010): mesmo nome do original; colisão com conteúdo diferente → nome único.
+                    // Feature 002 (FR-010): mesmo nome do original; colisão com conteúdo diferente → mescla.
                     var destinoFalhas = await GravarParteAsync(
                         leitura, SerializadorPartes.SerializarBrutos(formato, grupos.Falhas), politica.PastaFail,
-                        _ => NomeadorPartes.ArquivoFalhas(leitura.BaseRaiz, extensao),
+                        _ => NomeadorPartes.NomeOriginal(leitura.BaseRaiz, extensao),
                         TiposParte.Falhas, null, ct);
                     destinoPrincipal ??= destinoFalhas;
                 }
@@ -252,23 +251,37 @@ internal sealed class GerenciadorArquivos(
 
     /// <summary>
     /// Grava a parte em <paramref name="pasta"/> e, com <paramref name="pastaSaida"/> (Inter, parte de sucesso), também
-    /// na fila <c>Output</c>; só então registra parte + entrega no diário (mesma transação).
+    /// na fila <c>Output</c>; só então registra parte + entrega no diário (mesma transação). Em <c>Processed</c> e
+    /// <c>Fail</c> o nome nunca muda: colisão com conteúdo diferente é mesclada (<see cref="MescladorHistorico"/>). Partes
+    /// pendentes (na entrada) e a fila <c>Output</c>, que é interna, continuam usando nome único em colisão; a entrega ao
+    /// Condomínio usa sempre o nome da parte (bug nome-original-sem-trace).
     /// </summary>
     private async Task<string> GravarParteAsync(
         ResultadoLeitura leitura, byte[] conteudo, string pasta, Func<string, string> nomear, string tipo, string? pastaSaida, CancellationToken cancelamento)
     {
         var hash = HashConteudo.Calcular(conteudo);
-        var destino = await DestinoLivreAsync(Path.Combine(pasta, nomear(hash)), hash, cancelamento);
-        await EscritorAtomico.GravarAsync(destino, conteudo, cancelamento);
+        string destino;
+        if (tipo == TiposParte.Pendente)
+        {
+            destino = await DestinoLivreAsync(Path.Combine(pasta, nomear(hash)), hash, cancelamento);
+            await EscritorAtomico.GravarAsync(destino, conteudo, cancelamento);
+        }
+        else
+        {
+            destino = Path.Combine(pasta, nomear(hash));
+            await MescladorHistorico.GravarAsync(destino, conteudo, cancelamento);
+        }
+
+        var nome = Path.GetFileName(destino);
         string? nomeSaida = null;
         if (pastaSaida is not null)
         {
-            var naFila = await DestinoLivreAsync(Path.Combine(pastaSaida, Path.GetFileName(destino)), hash, cancelamento);
+            var naFila = await DestinoLivreAsync(Path.Combine(pastaSaida, nome), hash, cancelamento);
             await EscritorAtomico.GravarAsync(naFila, conteudo, cancelamento);
             nomeSaida = Path.GetFileName(naFila);
         }
 
-        await estado.RegistrarParteAsync(new ParteGerada(hash, leitura.Hash, tipo, destino), nomeSaida, cancelamento);
+        await estado.RegistrarParteAsync(new ParteGerada(hash, leitura.Hash, tipo, destino), nomeSaida, cancelamento, nomeSaida is null ? null : nome);
         return destino;
     }
 
@@ -280,6 +293,12 @@ internal sealed class GerenciadorArquivos(
         {
             // Volume limitado (Processamento:TamanhoMaximoBytes, 1 MiB por padrão), validado na leitura.
             var conteudo = await File.ReadAllBytesAsync(origem, cancelamento);
+            if (!string.Equals(HashConteudo.Calcular(conteudo), hash, StringComparison.Ordinal))
+            {
+                // Retomada em que o original já foi mesclado em Processed: o conteúdo a entregar não está mais disponível.
+                throw new IOException($"Origem de '{nome}' para a fila Output não tem mais o conteúdo original.");
+            }
+
             await EscritorAtomico.GravarAsync(naFila, conteudo, cancelamento);
         }
 

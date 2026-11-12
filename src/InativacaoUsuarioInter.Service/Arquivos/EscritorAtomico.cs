@@ -69,6 +69,23 @@ internal static class EscritorAtomico
         return ResultadoEscrita.Gravado;
     }
 
+    /// <summary>
+    /// Troca atômica do conteúdo de <paramref name="destino"/> (temporário + rename com substituição). Usada só pela mescla
+    /// do histórico (<see cref="MescladorHistorico"/>), cujo novo conteúdo contém o anterior — nada se perde.
+    /// </summary>
+    public static async Task SubstituirAsync(string destino, ReadOnlyMemory<byte> conteudo, CancellationToken cancelamento)
+    {
+        var temporario = destino + SufixoTemporario;
+        await using (var fluxo = new FileStream(
+            temporario, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough | FileOptions.Asynchronous))
+        {
+            await fluxo.WriteAsync(conteudo, cancelamento);
+            await fluxo.FlushAsync(cancelamento);
+        }
+
+        File.Move(temporario, destino, overwrite: true);
+    }
+
     /// <summary>Move <paramref name="origem"/> para <paramref name="destino"/>; com destino idêntico, apenas remove a origem.</summary>
     public static async Task<ResultadoEscrita> MoverAsync(string origem, string destino, CancellationToken cancelamento)
     {

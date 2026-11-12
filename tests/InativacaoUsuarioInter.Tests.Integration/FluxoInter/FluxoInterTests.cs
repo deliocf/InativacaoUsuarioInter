@@ -98,8 +98,9 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
         Assert.Contains("44444444444", conteudoFalhas, StringComparison.Ordinal);
         Assert.DoesNotContain("22222222222", conteudoFalhas, StringComparison.Ordinal);
 
+        // Bug nome-original-sem-trace: a parte de sucesso mantém o nome do original (Processed e Condomínio).
         var parteSucesso = Assert.Single(cenario.Ambiente.Arquivos("Processed"));
-        Assert.Matches(@"^20261111103000__sucesso-[0-9a-f]{8}\.json$", parteSucesso);
+        Assert.Equal("20261111103000.json", parteSucesso);
         var conteudoSucesso = await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Processed", parteSucesso), ct);
         Assert.Equal(conteudoSucesso, await File.ReadAllTextAsync(cenario.Ambiente.PastaCondominio("Input", parteSucesso), ct));
         Assert.Empty(cenario.Ambiente.Arquivos("Output"));
@@ -175,12 +176,34 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
         cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         await cenario.CicloAsync(ct);
 
-        cenario.Ambiente.Depositar("copia.txt", "22222222222,1,Maria\r\n");
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
         await cenario.CicloAsync(ct);
 
         Assert.Single(cenario.Ambiente.LinhasLog("Logs"));
         Assert.Empty(cenario.Ambiente.Arquivos("Input"));
         Assert.Equal(["a.txt"], cenario.Ambiente.Arquivos("Processed"));
+        Assert.Empty(cenario.Ambiente.Arquivos("Output"));
+    }
+
+    [Fact]
+    public async Task Mesmo_conteudo_com_outro_nome_eh_processado_como_arquivo_novo()
+    {
+        // Bug ja-inativo-sem-replicacao (FR-009a): o arquivo é identificado por nome + conteúdo; a cópia com outro
+        // nome é processada (JA_INATIVO) e entregue, porque no Condomínio o cadastro pode estar ativo.
+        var ct = TestContext.Current.CancellationToken;
+        await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
+        await SemearAsync(cenario, "22222222222");
+        cenario.Ambiente.Depositar("a.txt", "22222222222,1,Maria\r\n");
+        await cenario.CicloAsync(ct);
+
+        cenario.Ambiente.Depositar("copia.txt", "22222222222,1,Maria\r\n");
+        await cenario.CicloAsync(ct);
+
+        var linhas = cenario.Ambiente.LinhasLog("Logs");
+        Assert.Equal(2, linhas.Length);
+        Assert.EndsWith("arquivo=copia.txt | cpf=22222222222 | id_responsavel=1 | nome_responsavel=Maria | status=JA_INATIVO", linhas[1], StringComparison.Ordinal);
+        Assert.Empty(cenario.Ambiente.Arquivos("Input"));
+        Assert.Equal(["a.txt", "copia.txt"], cenario.Ambiente.Arquivos("Processed").Order(StringComparer.Ordinal));
         Assert.Empty(cenario.Ambiente.Arquivos("Output"));
     }
 
@@ -202,8 +225,9 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
     }
 
     [Fact]
-    public async Task Arquivo_de_falhas_com_mesmo_nome_e_conteudo_diferente_recebe_nome_unico_sem_sobrescrever()
+    public async Task Arquivo_de_falhas_com_mesmo_nome_e_conteudo_diferente_eh_mesclado_sem_renomear_nem_perder()
     {
+        // Bug nome-original-sem-trace (FR-010): nunca renomear; os registros novos são acrescentados ao arquivo existente.
         var ct = TestContext.Current.CancellationToken;
         await using var cenario = await Cenario.CriarAsync(sql, cancelamento: ct);
         cenario.Ambiente.Depositar("c.txt", "77777777777,1,Primeiro\r\n");
@@ -213,12 +237,10 @@ public sealed partial class FluxoInterTests(SqlServerFixture sql)
         cenario.Ambiente.Depositar("c.txt", "88888888888,1,Segundo\r\n");
         await cenario.CicloAsync(ct);
 
-        var falhas = cenario.Ambiente.Arquivos("Fail").Where(a => a.EndsWith(".txt", StringComparison.Ordinal)).ToArray();
-        Assert.Equal(2, falhas.Length);
-        Assert.Equal("77777777777,1,Primeiro\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", "c.txt"), ct));
-        var segundo = Assert.Single(falhas, a => a != "c.txt");
-        Assert.Matches(@"^c__[0-9a-f]{8}\.txt$", segundo);
-        Assert.Equal("88888888888,1,Segundo\r\n", await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", segundo), ct));
+        Assert.Equal(["c.txt"], cenario.Ambiente.Arquivos("Fail").Where(a => a.EndsWith(".txt", StringComparison.Ordinal)));
+        Assert.Equal(
+            "77777777777,1,Primeiro\r\n88888888888,1,Segundo\r\n",
+            await File.ReadAllTextAsync(cenario.Ambiente.Pasta("Fail", "c.txt"), ct));
     }
 
     [Fact]
