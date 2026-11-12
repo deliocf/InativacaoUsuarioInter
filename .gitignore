@@ -8,6 +8,9 @@ packages/
 TestResults/
 publish/
 
+#Arquivos de teste
+Files/
+
 # Configuração local com credenciais de teste (research R-15).
 # Versionar somente appsettings.example.json.
 src/InativacaoUsuarioInter.Service/appsettings.json
