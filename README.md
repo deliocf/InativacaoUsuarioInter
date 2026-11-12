@@ -32,7 +32,7 @@ sc.exe start InativacaoUsuarioInter
 - Com configuração inválida, o processo **encerra na partida com código 1** e registra no log (Event Log ou console) uma mensagem que cita a chave e a regra violada. A mensagem nunca mostra a string de conexão.
 - Para parar: `sc.exe stop InativacaoUsuarioInter`. O desligamento gracioso respeita `HostOptions:ShutdownTimeout` (padrão 30 s). Um registro interrompido fica pendente e é retomado sem duplicação.
 
-> O instalador `InativacaoUsuarioInter.Setup.vdproj` ainda aponta para a saída de Debug e não registra o serviço (tarefa opcional T092). Use o procedimento acima.
+> O MSI ainda não foi validado ponta a ponta. Até isso ocorrer, use o procedimento acima para publicar e registrar o serviço.
 
 ## 3. Configuração (`appsettings.json`)
 

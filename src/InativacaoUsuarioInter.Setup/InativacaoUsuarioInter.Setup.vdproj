@@ -21,7 +21,19 @@
         }
         "Entry"
         {
+        "MsmKey" = "8:_83F88383A5534340AE3785CE88BB1480"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
         "MsmKey" = "8:_CF5F6F7B6F454717A1BE27F699330D80"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_D53C28D4D5E24FA68405EB160B3FEB62"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
         }
@@ -50,6 +62,14 @@
             "PrerequisitesLocation" = "2:1"
             "Url" = "8:"
             "ComponentsUrl" = "8:"
+                "Items"
+                {
+                    "{EDC2488A-8267-493A-A98E-7D9C3B36CDF3}:.NETFramework,Version=v4.7.2"
+                    {
+                    "Name" = "8:Microsoft .NET Framework 4.7.2 (x86 and x64)"
+                    "ProductCode" = "8:.NETFramework,Version=v4.7.2"
+                    }
+                }
             }
         }
         "Release"
@@ -74,6 +94,14 @@
             "PrerequisitesLocation" = "2:1"
             "Url" = "8:"
             "ComponentsUrl" = "8:"
+                "Items"
+                {
+                    "{EDC2488A-8267-493A-A98E-7D9C3B36CDF3}:.NETFramework,Version=v4.7.2"
+                    {
+                    "Name" = "8:Microsoft .NET Framework 4.7.2 (x86 and x64)"
+                    "ProductCode" = "8:.NETFramework,Version=v4.7.2"
+                    }
+                }
             }
         }
     }
@@ -81,6 +109,34 @@
     {
         "CustomAction"
         {
+            "{4AA51A2D-7D85-4A59-BA75-B0809FC8B380}:_6F66A71DCDFA455C8C4EB0B8A9C685FE"
+            {
+            "Name" = "8:InativacaoUsuarioInter.Service.exe --instalar"
+            "Condition" = "8:NOT Installed"
+            "Object" = "8:_CF5F6F7B6F454717A1BE27F699330D80"
+            "FileType" = "3:2"
+            "InstallAction" = "3:1"
+            "Arguments" = "8:--instalar"
+            "EntryPoint" = "8:"
+            "Sequence" = "3:1"
+            "Identifier" = "8:_22064724_5497_4CB6_8880_78C5400532CE"
+            "InstallerClass" = "11:FALSE"
+            "CustomActionData" = "8:"
+            }
+            "{4AA51A2D-7D85-4A59-BA75-B0809FC8B380}:_93D07911726D4A07999CBBB3ADFF08C8"
+            {
+            "Name" = "8:InativacaoUsuarioInter.Service.exe --desinstalar"
+            "Condition" = "8:REMOVE=\"ALL\""
+            "Object" = "8:_CF5F6F7B6F454717A1BE27F699330D80"
+            "FileType" = "3:2"
+            "InstallAction" = "3:4"
+            "Arguments" = "8:--desinstalar"
+            "EntryPoint" = "8:"
+            "Sequence" = "3:1"
+            "Identifier" = "8:_2051A31D_93DD_464A_AA11_0CF1714EFA71"
+            "InstallerClass" = "11:FALSE"
+            "CustomActionData" = "8:"
+            }
         }
         "DefaultFeature"
         {
@@ -92,10 +148,60 @@
         {
             "LaunchCondition"
             {
+                "{A06ECF26-33A3-4562-8140-9B0E340D4F24}:_283A36BFEBB147B28C9EDC4E1417A9C2"
+                {
+                "Name" = "8:.NET Core"
+                "Message" = "8:[VSDNETCOREMSG]"
+                "AllowLaterVersions" = "11:FALSE"
+                "InstallUrl" = "8:https://dotnet.microsoft.com/download/dotnet-core/[NetCoreVerMajorDotMinor]"
+                "IsNETCore" = "11:TRUE"
+                "Architecture" = "2:0"
+                "Runtime" = "2:0"
+                }
             }
         }
         "File"
         {
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_83F88383A5534340AE3785CE88BB1480"
+            {
+            "SourcePath" = "8:..\\..\\docs\\operacao.md"
+            "TargetName" = "8:operacao.md"
+            "Tag" = "8:"
+            "Folder" = "8:_9C94E229BEE84F2CBB948572A616883B"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_D53C28D4D5E24FA68405EB160B3FEB62"
+            {
+            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\appsettings.example.json"
+            "TargetName" = "8:appsettings.example.json"
+            "Tag" = "8:"
+            "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
         }
         "FileType"
         {
@@ -134,6 +240,17 @@
             "Property" = "8:TARGETDIR"
                 "Folders"
                 {
+                    "{9EF0B969-E518-4E46-987F-47570745A589}:_9C94E229BEE84F2CBB948572A616883B"
+                    {
+                    "Name" = "8:docs"
+                    "AlwaysCreate" = "11:FALSE"
+                    "Condition" = "8:"
+                    "Transitive" = "11:FALSE"
+                    "Property" = "8:_1D23262875034048B0FE2531D6BBFBEF"
+                        "Folders"
+                        {
+                        }
+                    }
                 }
             }
         }
@@ -153,7 +270,7 @@
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:InativacaoUsuarioInter.Setup"
         "ProductCode" = "8:{FF4F6EED-FE83-4E16-9F10-07E5BE394C82}"
-        "PackageCode" = "8:{343687AB-C110-48CE-9970-C483E0B65E6B}"
+        "PackageCode" = "8:{F2CC1BB0-6B2E-4261-8E36-206D44D19970}"
         "UpgradeCode" = "8:{6F2CDE48-71F3-4D1D-880E-C0B29A1D9C4A}"
         "AspNetVersion" = "8:4.0.30319.0"
         "RestartWWWService" = "11:FALSE"
@@ -674,7 +791,7 @@
         {
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_7135A9A3C3454121B8CE04F58F84C483"
             {
-            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\InativacaoUsuarioInter.Service.dll"
+            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Release\\net10.0\\InativacaoUsuarioInter.Service.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"
@@ -702,7 +819,7 @@
             }
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_CF5F6F7B6F454717A1BE27F699330D80"
             {
-            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Debug\\net10.0\\apphost.exe"
+            "SourcePath" = "8:..\\InativacaoUsuarioInter.Service\\obj\\Release\\net10.0\\apphost.exe"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_E5E771B1D8FC40009C343079FCFD62F4"

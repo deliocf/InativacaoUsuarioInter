@@ -43,11 +43,11 @@ C:\Servicos\InativacaoUsuarioInter\InativacaoUsuarioInter.Service.exe --desinsta
 
 ### Instalador MSI (`InativacaoUsuarioInter.Setup.vdproj`) — pendente (T092)
 
-O ajuste do projeto de setup exige o Visual Studio com a extensão *Microsoft Visual Studio Installer Projects*, que não estava disponível para validar a mudança. No designer do projeto de setup:
+O ajuste do projeto de setup exige o Visual Studio com a extensão *Microsoft Visual Studio Installer Projects*. As ações customizadas devem executar o aplicativo, não a DLL do serviço: uma ação DLL sem ponto de entrada produz erro ao compilar. No designer do projeto de setup:
 
-1. **File System → Application Folder**: manter apenas **Publish Items** do `InativacaoUsuarioInter.Service` (configuração *Release*); remover *Primary output* (`Built`), o *PublishItemsOutputGroup* duplicado e **Content Files** (este último empacotaria o `appsettings.json` local).
-2. **Custom Actions → Install**: adicionar *Publish Items* com `Arguments = --instalar` e `InstallerClass = False`.
-3. **Custom Actions → Uninstall**: adicionar *Publish Items* com `Arguments = --desinstalar` e `InstallerClass = False`.
+1. **File System → Application Folder**: manter os arquivos publicados do `InativacaoUsuarioInter.Service` (configuração *Release*); remover *Primary output* (`Built`), o *PublishItemsOutputGroup* duplicado e **Content Files** (este último empacotaria o `appsettings.json` local).
+2. **Custom Actions → Install**: selecionar `InativacaoUsuarioInter.Service.exe`, configurar tipo de ação como executável e `Arguments = --instalar` (não configurar `CustomActionData`).
+3. **Custom Actions → Uninstall**: selecionar `InativacaoUsuarioInter.Service.exe`, configurar tipo de ação como executável e `Arguments = --desinstalar` (não configurar `CustomActionData`).
 4. Ajustar *Manufacturer* e *ProductName* (hoje `Default Company Name` e `InativacaoUsuarioInter.Setup`) e compilar em *Release*.
 
 ## 3. Configuração (`appsettings.json`)
