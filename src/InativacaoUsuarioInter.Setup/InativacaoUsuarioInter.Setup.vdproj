@@ -230,6 +230,17 @@
                 {
                 }
             }
+            "{1525181F-901A-416C-8A58-119130FE478E}:_D4E541E395C848B2AA718C475ACEF005"
+            {
+            "Name" = "8:#1912"
+            "AlwaysCreate" = "11:FALSE"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Property" = "8:ProgramFilesFolder"
+                "Folders"
+                {
+                }
+            }
             "{3C67513D-01DD-4637-8A68-80971EB9504F}:_E5E771B1D8FC40009C343079FCFD62F4"
             {
             "DefaultLocation" = "8:[ProgramFilesFolder][Manufacturer]\\[ProductName]"
@@ -270,7 +281,7 @@
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:InativacaoUsuarioInter.Setup"
         "ProductCode" = "8:{FF4F6EED-FE83-4E16-9F10-07E5BE394C82}"
-        "PackageCode" = "8:{F2CC1BB0-6B2E-4261-8E36-206D44D19970}"
+        "PackageCode" = "8:{CD3C426D-5A42-40A8-A645-0F7BFED27970}"
         "UpgradeCode" = "8:{6F2CDE48-71F3-4D1D-880E-C0B29A1D9C4A}"
         "AspNetVersion" = "8:4.0.30319.0"
         "RestartWWWService" = "11:FALSE"
