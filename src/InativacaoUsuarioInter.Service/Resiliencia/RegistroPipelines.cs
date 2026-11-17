@@ -1,4 +1,5 @@
 using InativacaoUsuarioInter.Service.Configuracao;
+using InativacaoUsuarioInter.Service.Inativacao;
 using InativacaoUsuarioInter.Service.Telemetria;
 using Polly;
 using Polly.CircuitBreaker;
@@ -27,6 +28,7 @@ internal sealed class ProvedorPipelines
     private readonly Dictionary<string, ResiliencePipeline> _pipelines = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CircuitBreakerStateProvider> _circuitos = new(StringComparer.Ordinal);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ErroClassificado> _causaAbertura = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _codigoSqlAbertura = new(StringComparer.Ordinal);
 
     public ProvedorPipelines(ConfiguracaoServico configuracao)
     {
@@ -49,10 +51,26 @@ internal sealed class ProvedorPipelines
     /// Classifica uma falha da dependência. Com o circuito aberto, devolve a categoria da falha que o abriu
     /// (ex.: Permissao, Configuracao), em vez de "circuito aberto", para que os alertas apontem a causa real.
     /// </summary>
-    public ErroClassificado Classificar(string dependencia, Exception excecao) =>
-        excecao is BrokenCircuitException && _causaAbertura.TryGetValue(dependencia, out var causa)
-            ? causa
-            : ClassificadorErros.Classificar(excecao);
+    public ErroClassificado Classificar(string dependencia, Exception excecao)
+    {
+        if (excecao is BrokenCircuitException && _causaAbertura.TryGetValue(dependencia, out var causa))
+        {
+            return causa;
+        }
+
+        var erro = ClassificadorErros.Classificar(excecao);
+        if (ClassificadorErrosSql.ObterNumero(excecao) is { } codigoSql)
+        {
+            _codigoSqlAbertura[dependencia] = codigoSql;
+        }
+
+        return erro;
+    }
+
+    public int? CodigoSqlFalha(string dependencia, Exception excecao) =>
+        excecao is BrokenCircuitException && _codigoSqlAbertura.TryGetValue(dependencia, out var codigo)
+            ? codigo
+            : ClassificadorErrosSql.ObterNumero(excecao);
 
     /// <summary>
     /// Executa <paramref name="operacao"/> no pipeline da dependência, propagando o orçamento do ciclo
@@ -144,6 +162,11 @@ internal sealed class ProvedorPipelines
                 if (args.Outcome.Exception is { } causa)
                 {
                     _causaAbertura[nome] = ClassificadorErros.Classificar(causa);
+                    _codigoSqlAbertura.TryRemove(nome, out _);
+                    if (ClassificadorErrosSql.ObterNumero(causa) is { } codigoSql)
+                    {
+                        _codigoSqlAbertura[nome] = codigoSql;
+                    }
                 }
 
                 return default;
@@ -153,9 +176,11 @@ internal sealed class ProvedorPipelines
                 EstadoMetricas.Circuitos[nome] = 2;
                 return default;
             },
-            OnClosed = _ =>
+            OnClosed = args =>
             {
                 EstadoMetricas.Circuitos[nome] = 0;
+                _causaAbertura.TryRemove(nome, out _);
+                _codigoSqlAbertura.TryRemove(nome, out _);
                 return default;
             },
         });

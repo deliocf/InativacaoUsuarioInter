@@ -214,7 +214,7 @@ internal sealed partial class ProcessadorArquivo(
         {
             var erro = pipelines.Classificar(Dependencias.WAccess, excecao);
             dependencias.MarcarIndisponivel(Dependencias.WAccess, erro, relogio.GetUtcNow());
-            LogFalhaWAccess(logger, chave, erro.Categoria, excecao.GetType().Name);
+            LogFalhaWAccess(logger, chave, erro.Categoria, excecao.GetType().Name, pipelines.CodigoSqlFalha(Dependencias.WAccess, excecao));
             return await RegistrarPendenciaAsync(chave, atividade, cancelamento);
         }
 
@@ -298,8 +298,8 @@ internal sealed partial class ProcessadorArquivo(
     [LoggerMessage(Level = LogLevel.Information, Message = "Arquivo {Arquivo}: {Sucessos} sucesso(s), {Falhas} falha(s) definitiva(s), {Pendentes} pendente(s); {Finalizacao}.")]
     private static partial void LogArquivoProcessado(ILogger logger, string arquivo, int sucessos, int falhas, int pendentes, Finalizacao finalizacao);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "WAccess indisponível ({Categoria}, {Tipo}); registro {ChaveIdempotencia} fica pendente.")]
-    private static partial void LogFalhaWAccess(ILogger logger, string chaveIdempotencia, CategoriaErro categoria, string tipo);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "WAccess indisponível ({Categoria}, {Tipo}, código SQL {CodigoSql}); registro {ChaveIdempotencia} fica pendente.")]
+    private static partial void LogFalhaWAccess(ILogger logger, string chaveIdempotencia, CategoriaErro categoria, string tipo, int? codigoSql);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "CpfComMultiplosCadastros: registro {ChaveIdempotencia} inativou {Quantidade} cadastros (research R-02).")]
     private static partial void LogMultiplosCadastros(ILogger logger, string chaveIdempotencia, int quantidade);

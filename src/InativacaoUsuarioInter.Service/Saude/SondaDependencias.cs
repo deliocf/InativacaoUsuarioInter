@@ -63,7 +63,7 @@ internal sealed partial class SondaDependencias(
             var erro = pipelines.Classificar(dependencia, excecao);
             dependencias.MarcarIndisponivel(dependencia, erro, relogio.GetUtcNow());
             atividade?.SetTag(Instrumentacao.Atributos.Resultado, "transitoria");
-            LogIndisponivel(logger, dependencia, erro.Categoria);
+            LogIndisponivel(logger, dependencia, erro.Categoria, excecao.GetType().Name, pipelines.CodigoSqlFalha(dependencia, excecao));
         }
     }
 
@@ -77,6 +77,6 @@ internal sealed partial class SondaDependencias(
         await comando.ExecuteScalarAsync(cancelamento);
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Sonda de readiness: dependência {Dependencia} indisponível ({Categoria}).")]
-    private static partial void LogIndisponivel(ILogger logger, string dependencia, CategoriaErro categoria);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sonda de readiness: dependência {Dependencia} indisponível ({Categoria}, {Tipo}, código SQL {CodigoSql}).")]
+    private static partial void LogIndisponivel(ILogger logger, string dependencia, CategoriaErro categoria, string tipo, int? codigoSql);
 }

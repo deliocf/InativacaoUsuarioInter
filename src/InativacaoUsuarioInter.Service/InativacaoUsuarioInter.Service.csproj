@@ -33,8 +33,11 @@
   <ItemGroup>
     <!-- Configuração local (não versionada) com credenciais de teste explícitas (documento-base §4.1). -->
     <!-- Nunca publicada (nem empacotada no MSI): contém a senha explícita do banco local de testes (R-15, T092). -->
+    <Content Update="appsettings.Development.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Condition="Exists('appsettings.json')" />
     <!-- O exemplo (só placeholders) acompanha a publicação como modelo para a instalação. -->
-    <Content Update="appsettings.example.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="appsettings.example.json" CopyToOutputDirectory="Always" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

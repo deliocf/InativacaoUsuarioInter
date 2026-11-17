@@ -22,6 +22,20 @@ internal static class ClassificadorErrosSql
     public static ErroClassificado? Classificar(Exception excecao) =>
         excecao is SqlException sql ? ClassificarNumero(sql.Number) : null;
 
+    public static int? ObterNumero(Exception excecao)
+    {
+        ArgumentNullException.ThrowIfNull(excecao);
+        for (Exception? atual = excecao; atual is not null; atual = atual.InnerException)
+        {
+            if (atual is SqlException sql)
+            {
+                return sql.Number;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Classifica pelo número do erro SQL.</summary>
     public static ErroClassificado ClassificarNumero(int numero)
     {
