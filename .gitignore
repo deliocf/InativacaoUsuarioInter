@@ -16,6 +16,8 @@ Files/
 src/InativacaoUsuarioInter.Service/appsettings.json
 src/InativacaoUsuarioInter.Setup/Release
 src/InativacaoUsuarioInter.Setup/Debug
+src/InativacaoUsuarioInter.Setup/InativacaoUsuarioInter
+src/InativacaoUsuarioInter.Setup/InativacaoUsuarioInter.zip
 
 # Universal
 .DS_Store

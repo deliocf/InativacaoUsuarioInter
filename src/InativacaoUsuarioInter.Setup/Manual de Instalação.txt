@@ -1,0 +1,73 @@
+1 - Pré-Requisitos - Instale o runtime do .NET Core 10.0.15 "dotnet-runtime-10.0.15-win-x64.exe"
+  Se necessário baixe-o neste link: https://dotnet.microsoft.com/pt-br/download/dotnet/thank-you/runtime-10.0.15-windows-x64-installer
+
+
+2 - Preparação Servidor condomínio:
+  A - Criar uma pasta onde serão gravados os arquivos.
+  B - Dentro desta pasta criar uma subpasta chamada "Input" 
+  C - Criar um usuário local na máquina com o nome por exemplo: usr_servico_inativacao 
+  D - Dar permissão de leitura e escrita para este usuário na pasta criada no item A
+  E - Instalar o serviço clicando no arquivo: InativacaoUsuarioInter.Setup.msi
+  F - Abra as configurações do serviço abrindo a janela services e procure pelo serviço: "Inativação de usuários WAccess". 
+      Na aba "Log on" marcar a opção "This account" e colocar o usuário e senha criados no item C 
+    - Ex: crie um usuário com o nome "usr_servico_inativacao" e na aba "This account" use .\usr_servico_inativacao e a senha criada
+  G - Configure o arquivo appsettings conforme o exemplo abaixo. Caso este arquivo não exista, renomeie o arquivo appsettings.example.json para appsettings.json e edite este arquivo:
+      Nota: O Arquivo de configuração fica dentro da pasta onde o serviço foi instalado. Normalmente em: C:\Program Files (x86)\Rocket-Tec\InativacaoUsuarioInter.Setup
+
+      "Settings": {
+        "Instancia": "Condominio",
+        "IntervalSeconds": 60
+      },
+
+      Nota: IntervalSeconds informa de quanto em quanto tempo o monitor varrerá a pasta em busca de novos arquivos. É dado em segundos e o máximo é 1440 segundos (24h): 
+
+      "SharePointFolder": {
+        "FolderPathInter": "",
+        "FolderPathCondominio": "C:\\Arquivos Importação"
+      },
+    
+    Nota: FolderPathCondominio deve receber o caminho da pasta criada (Use barra invertida dupla como no exemplo)
+
+    "ConnectionString": {
+      "WAccess": "Server=MyServerName;Database=W_ACCESS;User ID=waccess;Password=SenhaDoWAccess;Trusted_Connection=False;TrustServerCertificate=True;"
+    },
+
+    Nota: A ConnectionString deve apontar para o banco WAccess do Condominio
+H - Inicialize o serviço
+
+
+3 - Preparação Servidor Inter:
+  A - Criar uma pasta onde serão gravados os arquivos.
+  B - Dentro desta pasta criar uma subpasta chamada "Input" (Os arquivos deverão ser gravados dentro desta subpasta)
+  C - Criar um usuário local na máquina exemplo: usr_servico_inativacao  (Deve ter o mesmo nome e senha do que foi criado no servidor do Condominio) 
+  D - Dar permissã0 de leitura e escrita para este usuário na pasta criada no item A
+  E - Criar um compartilhamento no servidor que aponte para a pasta criada no condomínio. (Ex: Z:\\)
+  F - Dar permissão de leitura e escrita no compartilhamento para o usuário criado no item A
+  G - Instalar o serviço clicando no arquivo: InativacaoUsuarioInter.Setup.msi
+  H - Abra as configurações do serviço abrindo a janela services e procure pelo serviço: "Inativação de usuários WAccess". 
+      Na aba "Log on" marcar a opção "This account" e colocar o usuário e senha criados no item C 
+    - Ex: crie um usuário com o nome "usr_servico_inativacao" e na aba "This account" use .\usr_servico_inativacao e a senha criada
+  I - Configure o arquivo appsettings conforme o exemplo abaixo. Caso este arquivo não exista, renomeie o arquivo appsettings.example.json para appsettings.json e edite este arquivo:
+      Nota: O Arquivo de configuração fica dentro da pasta onde o serviço foi instalado. Normalmente em: C:\Program Files (x86)\Rocket-Tec\InativacaoUsuarioInter.Setup
+      
+    "Settings": {
+      "Instancia": "Inter",
+      "IntervalSeconds": 60
+    },
+
+    Nota: repare que a Instancia agora é Inter
+
+    "SharePointFolder": {
+      "FolderPathInter": "C:\\Arquivos Importação",
+      "FolderPathCondominio": "Z:\\"
+    },
+
+    Nota: agora as duas pastas devem ser referenciadas sendo que FolderPathCondominio aponta para o compartilhamento
+    
+    "ConnectionString": {
+      "WAccess": "Server=MyServerName;Database=W_ACCESS;User ID=waccess;Password=SenhaDoWAccess;Trusted_Connection=False;TrustServerCertificate=True;"
+    },
+
+    Nota: A ConnectionString deve apontar para o banco WAccess do Inter
+
+J - Inicialize o serviço
